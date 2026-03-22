@@ -1,0 +1,10 @@
+data/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+.env
+.env.*
+.vscode/
+.idea/
+*.pmtiles

@@ -1,0 +1,15 @@
+:8080 {
+	root * /srv/heatmap
+	file_server
+
+	@pmtiles path *.pmtiles
+	header @pmtiles Access-Control-Allow-Origin *
+	header @pmtiles Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+	header @pmtiles Access-Control-Allow-Headers Range
+	header @pmtiles Access-Control-Expose-Headers "Content-Length, Content-Range"
+	header @pmtiles Content-Type application/octet-stream
+	header @pmtiles Cache-Control "public, max-age=86400"
+
+	@html path *.html
+	header @html Cache-Control no-cache
+}

@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Heatmap Tile Server — Data Manager</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0e14;
+    --surface: #12161e;
+    --surface2: #1a1f2b;
+    --border: #2a3040;
+    --text: #c8cdd8;
+    --text-dim: #6b7280;
+    --accent: #ffa040;
+    --accent-green: #40c060;
+    --accent-red: #e04050;
+    --accent-blue: #3090e0;
+  }
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+
+  .header h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  .header a {
+    font-size: 13px;
+    color: var(--accent-blue);
+    text-decoration: none;
+  }
+  .header a:hover { text-decoration: underline; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .card h2 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+  }
+
+  .card h2.section-divider {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-row:last-child { border-bottom: none; }
+
+  .stat-label {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .stat-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-idle { background: rgba(64,192,96,0.15); color: var(--accent-green); }
+  .badge-rendering { background: rgba(255,160,64,0.15); color: var(--accent); }
+  .badge-paused { background: rgba(224,64,80,0.15); color: var(--accent-red); }
+
+
+  .progress-bar {
+    width: 100%;
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    margin-top: 12px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-pause {
+    background: rgba(224,64,80,0.1);
+    color: var(--accent-red);
+    border-color: rgba(224,64,80,0.3);
+  }
+  .btn-pause:hover { background: rgba(224,64,80,0.2); }
+
+  .btn-resume {
+    background: rgba(64,192,96,0.1);
+    color: var(--accent-green);
+    border-color: rgba(64,192,96,0.3);
+  }
+  .btn-resume:hover { background: rgba(64,192,96,0.2); }
+
+  .btn-rebuild {
+    background: rgba(255,160,64,0.1);
+    color: var(--accent);
+    border-color: rgba(255,160,64,0.3);
+  }
+  .btn-rebuild:hover { background: rgba(255,160,64,0.2); }
+
+  .btn-upload {
+    background: rgba(48,144,224,0.1);
+    color: var(--accent-blue);
+    border-color: rgba(48,144,224,0.3);
+  }
+  .btn-upload:hover { background: rgba(48,144,224,0.2); }
+
+  .btn-export {
+    background: rgba(160,120,255,0.1);
+    color: #a078ff;
+    border-color: rgba(160,120,255,0.3);
+  }
+  .btn-export:hover { background: rgba(160,120,255,0.2); }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 24px 16px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+    transition: all 0.2s;
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+  .drop-zone:hover {
+    border-color: var(--accent-blue);
+    color: var(--text);
+  }
+  .drop-zone.drag-over {
+    border-color: var(--accent-blue);
+    background: rgba(48,144,224,0.08);
+    color: var(--accent-blue);
+  }
+  .drop-zone .drop-icon {
+    font-size: 28px;
+    display: block;
+    margin-bottom: 8px;
+    opacity: 0.6;
+  }
+
+  .file-list {
+    max-height: 150px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+  }
+  .file-list:empty { display: none; }
+
+  .file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    border-bottom: 1px solid var(--border);
+  }
+  .file-item:last-child { border-bottom: none; }
+  .file-item .file-name {
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    margin-right: 8px;
+  }
+  .file-item .file-size {
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+  .file-item .file-remove {
+    color: var(--accent-red);
+    cursor: pointer;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+  .file-item .file-remove:hover { opacity: 0.7; }
+
+  .hint {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  .msg {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--accent);
+    display: none;
+  }
+
+  .last-updated {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+    margin-top: 16px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Local Heatmap Tile Server — Data Manager</h1>
+  <a href="/">&larr; Back to Map</a>
+</div>
+
+<div class="grid">
+
+  <!-- ===== IMPORT DATA ===== -->
+  <div class="card">
+    <h2>Import Data</h2>
+    <div class="drop-zone" id="drop-zone">
+      <span class="drop-icon">&#8682;</span>
+      Drag &amp; drop .fit, .gpx, or .tcx files here<br>
+      <span style="font-size: 11px; color: var(--text-dim);">or click to browse (100 MB max per upload)</span>
+    </div>
+    <input type="file" id="file-input" multiple accept=".fit,.FIT,.gpx,.GPX,.tcx,.TCX" style="display:none">
+    <div class="file-list" id="file-list"></div>
+    <div class="controls">
+      <button class="btn btn-upload" id="btn-upload" onclick="uploadFiles()" disabled>Upload &amp; Import</button>
+    </div>
+    <div class="msg" id="upload-msg"></div>
+
+    <h2 class="section-divider">Scan Import Directory</h2>
+    <p class="hint">
+      Import activity files (.fit, .gpx, .tcx) already placed in the server's import directory.
+    </p>
+    <div class="controls">
+      <button class="btn btn-resume" id="btn-import" onclick="importFiles()">Scan &amp; Import</button>
+    </div>
+    <div class="msg" id="import-msg"></div>
+  </div>
+
+  <!-- ===== DATA SUMMARY ===== -->
+  <div class="card">
+    <h2>Data Summary</h2>
+    <div class="stat-row">
+      <span class="stat-label">Imported files</span>
+      <span class="stat-value" id="total-files">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Tracks</span>
+      <span class="stat-value" id="total-tracks">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">GPS points</span>
+      <span class="stat-value" id="total-points">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Data bounds (SW)</span>
+      <span class="stat-value" id="bounds-sw">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Data bounds (NE)</span>
+      <span class="stat-value" id="bounds-ne">--</span>
+    </div>
+
+  </div>
+
+  <!-- ===== TILE RENDERING ===== -->
+  <div class="card">
+    <h2>Tile Rendering</h2>
+    <div class="stat-row">
+      <span class="stat-label">State</span>
+      <span id="pr-state" class="badge badge-idle">idle</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Tiles remaining</span>
+      <span class="stat-value" id="pr-remaining">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Rendered (session)</span>
+      <span class="stat-value" id="pr-session">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Rendered (total)</span>
+      <span class="stat-value" id="pr-total">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Last render</span>
+      <span class="stat-value" id="pr-last">--</span>
+    </div>
+    <div class="progress-bar" id="pr-progress-wrap" style="display:none">
+      <div class="progress-fill" id="pr-progress" style="width: 0%"></div>
+    </div>
+    <div class="controls">
+      <button class="btn btn-pause" id="btn-pause" onclick="togglePrerender(false)">Pause</button>
+      <button class="btn btn-resume" id="btn-resume" onclick="togglePrerender(true)">Resume</button>
+    </div>
+
+    <h2 class="section-divider">Rebuild</h2>
+    <p class="hint">
+      Clear the tile cache and queue all tiles for re-rendering.
+    </p>
+    <div class="controls">
+      <button class="btn btn-rebuild" id="btn-rebuild" onclick="rebuildAll()">Rebuild All Tiles</button>
+    </div>
+    <div class="msg" id="rebuild-msg"></div>
+  </div>
+
+  <!-- ===== EXPORT ===== -->
+  <div class="card">
+    <h2>Export</h2>
+    <p class="hint">
+      Export rendered tiles as a PMTiles archive for static hosting or use with other tools.
+      Missing tiles are rendered on-the-fly during export to ensure completeness.
+    </p>
+    <div class="controls" style="display: flex; align-items: center; gap: 8px;">
+      <select id="export-style" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px;">
+        <option value="warm">Warm</option>
+        <option value="cool">Cool</option>
+        <option value="top10">Top 10%</option>
+      </select>
+      <button class="btn btn-export" id="btn-export" onclick="exportPMTiles()">Export PMTiles</button>
+    </div>
+    <div class="msg" id="export-msg"></div>
+  </div>
+
+</div>
+
+<div class="last-updated"><span id="stat-version"></span> &middot; Auto-refresh: <span id="refresh-time">--</span></div>
+
+<script>
+(function() {
+  const ACCEPTED_EXTENSIONS = ['.fit', '.gpx', '.tcx'];
+
+  let sessionStart = null;
+  let pendingFiles = [];
+
+  function formatNumber(n) {
+    if (n == null) return '--';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    return n.toLocaleString();
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function formatCoord(lat, lon) {
+    if (lat == null || lon == null) return '--';
+    return lat.toFixed(4) + ', ' + lon.toFixed(4);
+  }
+
+  function timeAgo(ts) {
+    if (!ts) return 'never';
+    const secs = Math.floor(Date.now() / 1000 - ts);
+    if (secs < 5) return 'just now';
+    if (secs < 60) return secs + 's ago';
+    if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+    return Math.floor(secs / 3600) + 'h ago';
+  }
+
+  function showMsg(id, text, color) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.style.color = color || 'var(--accent)';
+    el.style.display = '';
+  }
+
+  function showMsgHtml(id, html, color) {
+    const el = document.getElementById(id);
+    el.innerHTML = html;
+    el.style.color = color || 'var(--accent)';
+    el.style.display = '';
+  }
+
+  function hideMsg(id) {
+    document.getElementById(id).style.display = 'none';
+  }
+
+  // --- File upload / drop zone ---
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+
+  dropZone.addEventListener('click', function() { fileInput.click(); });
+
+  fileInput.addEventListener('change', function() {
+    addFiles(Array.from(fileInput.files));
+    fileInput.value = '';
+  });
+
+  dropZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', function() {
+    dropZone.classList.remove('drag-over');
+  });
+  dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    addFiles(Array.from(e.dataTransfer.files));
+  });
+
+  function addFiles(files) {
+    for (const f of files) {
+      const ext = f.name.substring(f.name.lastIndexOf('.')).toLowerCase();
+      if (ACCEPTED_EXTENSIONS.includes(ext)) {
+        if (!pendingFiles.some(p => p.name === f.name && p.size === f.size)) {
+          pendingFiles.push(f);
+        }
+      }
+    }
+    renderFileList();
+  }
+
+  function removeFile(idx) {
+    pendingFiles.splice(idx, 1);
+    renderFileList();
+  }
+
+  function renderFileList() {
+    const list = document.getElementById('file-list');
+    list.innerHTML = '';
+    pendingFiles.forEach(function(f, i) {
+      const item = document.createElement('div');
+      item.className = 'file-item';
+      item.innerHTML =
+        '<span class="file-name">' + f.name + '</span>' +
+        '<span class="file-size">' + formatSize(f.size) + '</span>' +
+        '<span class="file-remove" title="Remove">&times;</span>';
+      item.querySelector('.file-remove').addEventListener('click', function() { removeFile(i); });
+      list.appendChild(item);
+    });
+    document.getElementById('btn-upload').disabled = pendingFiles.length === 0;
+  }
+
+  window.uploadFiles = async function() {
+    if (pendingFiles.length === 0) return;
+    const btn = document.getElementById('btn-upload');
+    btn.disabled = true;
+    btn.textContent = 'Uploading...';
+    hideMsg('upload-msg');
+
+    const formData = new FormData();
+    for (const f of pendingFiles) {
+      formData.append('files', f);
+    }
+
+    try {
+      const res = await fetch('/api/import', { method: 'POST', body: formData });
+      const d = await res.json();
+      const imported = d.results.filter(r => r.status === 'imported').length;
+      const dupes = d.results.filter(r => r.status === 'duplicate').length;
+      const errors = d.results.filter(r => r.status === 'error').length;
+      const parts = [];
+      if (imported > 0) parts.push(imported + ' imported');
+      if (dupes > 0) parts.push(dupes + ' duplicate');
+      if (errors > 0) parts.push(errors + ' failed');
+      showMsg('upload-msg',
+        'Uploaded ' + d.results.length + ' files: ' + parts.join(', ') + '.',
+        errors > 0 ? 'var(--accent-red)' : 'var(--accent-green)');
+      pendingFiles = [];
+      renderFileList();
+      await Promise.all([refreshPrerender(), refreshStats()]);
+    } catch (e) {
+      showMsg('upload-msg', 'Upload failed: ' + e.message, 'var(--accent-red)');
+      console.error('Upload failed', e);
+    } finally {
+      btn.disabled = pendingFiles.length === 0;
+      btn.textContent = 'Upload & Import';
+    }
+  };
+
+  // --- Prerender / stats refresh ---
+  async function refreshPrerender() {
+    try {
+      const res = await fetch('/api/prerender/status');
+      const d = await res.json();
+
+      const stateEl = document.getElementById('pr-state');
+      stateEl.textContent = d.state;
+      stateEl.className = 'badge badge-' + d.state;
+
+      document.getElementById('pr-remaining').textContent = formatNumber(d.remaining);
+      document.getElementById('pr-session').textContent = formatNumber(d.rendered_session);
+      document.getElementById('pr-total').textContent = formatNumber(d.rendered_total);
+      document.getElementById('pr-last').textContent = timeAgo(d.last_render_time);
+
+      const progressWrap = document.getElementById('pr-progress-wrap');
+      if (d.state === 'rendering' && d.remaining > 0) {
+        if (sessionStart === null) sessionStart = d.rendered_session + d.remaining;
+        const done = d.rendered_session;
+        const total = sessionStart;
+        const pct = total > 0 ? Math.min(100, (done / total) * 100) : 0;
+        document.getElementById('pr-progress').style.width = pct.toFixed(1) + '%';
+        progressWrap.style.display = '';
+      } else {
+        sessionStart = null;
+        progressWrap.style.display = 'none';
+      }
+
+      document.getElementById('btn-pause').disabled = !d.enabled;
+      document.getElementById('btn-resume').disabled = d.enabled;
+    } catch (e) {
+      console.error('Failed to fetch prerender status', e);
+    }
+  }
+
+  async function refreshStats() {
+    try {
+      const res = await fetch('/api/stats');
+      const d = await res.json();
+
+      document.getElementById('total-files').textContent = formatNumber(d.total_files);
+      document.getElementById('total-tracks').textContent = formatNumber(d.total_tracks);
+      document.getElementById('total-points').textContent = formatNumber(d.total_points);
+
+      if (d.bounds) {
+        document.getElementById('bounds-sw').textContent =
+          formatCoord(d.bounds.min_lat, d.bounds.min_lon);
+        document.getElementById('bounds-ne').textContent =
+          formatCoord(d.bounds.max_lat, d.bounds.max_lon);
+      }
+
+      if (d.version) {
+        document.getElementById('stat-version').textContent = 'v' + d.version;
+      }
+
+    } catch (e) {
+      console.error('Failed to fetch stats', e);
+    }
+  }
+
+  async function refreshAll() {
+    await Promise.all([refreshPrerender(), refreshStats()]);
+    document.getElementById('refresh-time').textContent =
+      new Date().toLocaleTimeString();
+  }
+
+  window.togglePrerender = async function(enable) {
+    const endpoint = enable ? '/api/prerender/resume' : '/api/prerender/pause';
+    try {
+      await fetch(endpoint, { method: 'POST' });
+      await refreshPrerender();
+    } catch (e) {
+      console.error('Failed to toggle prerender', e);
+    }
+  };
+
+  window.importFiles = async function() {
+    const btn = document.getElementById('btn-import');
+    btn.disabled = true;
+    btn.textContent = 'Scanning...';
+    hideMsg('import-msg');
+    try {
+      const res = await fetch('/api/scan', { method: 'POST' });
+      const d = await res.json();
+      showMsg('import-msg',
+        'Imported ' + d.imported + ' of ' + d.total_scanned + ' files scanned.',
+        d.imported > 0 ? 'var(--accent-green)' : 'var(--text-dim)');
+      await Promise.all([refreshPrerender(), refreshStats()]);
+    } catch (e) {
+      showMsg('import-msg', 'Import failed: ' + e.message, 'var(--accent-red)');
+      console.error('Import failed', e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Scan & Import';
+    }
+  };
+
+  window.rebuildAll = async function() {
+    const btn = document.getElementById('btn-rebuild');
+    btn.disabled = true;
+    btn.textContent = 'Rebuilding...';
+    hideMsg('rebuild-msg');
+    try {
+      const res = await fetch('/api/rebuild', { method: 'POST' });
+      const d = await res.json();
+      showMsg('rebuild-msg', d.message);
+      await refreshPrerender();
+    } catch (e) {
+      showMsg('rebuild-msg', 'Rebuild failed: ' + e.message, 'var(--accent-red)');
+      console.error('Rebuild failed', e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Rebuild All Tiles';
+    }
+  };
+
+  window.exportPMTiles = async function() {
+    const btn = document.getElementById('btn-export');
+    const style = document.getElementById('export-style').value;
+    btn.disabled = true;
+    btn.textContent = 'Exporting...';
+    hideMsg('export-msg');
+    try {
+      const res = await fetch('/api/export/pmtiles?style=' + encodeURIComponent(style), { method: 'POST' });
+      const d = await res.json();
+      if (d.status === 'ok') {
+        showMsgHtml('export-msg',
+          d.message + ' &mdash; <a href="' + d.download + '" style="color: #a078ff;">Download</a>');
+      } else {
+        showMsg('export-msg', d.message, 'var(--accent-red)');
+      }
+    } catch (e) {
+      showMsg('export-msg', 'Export failed: ' + e.message, 'var(--accent-red)');
+      console.error('Export failed', e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Export PMTiles';
+    }
+  };
+
+  // Initial load + auto-refresh
+  refreshAll();
+  setInterval(refreshAll, 3000);
+})();
+</script>
+</body>
+</html>

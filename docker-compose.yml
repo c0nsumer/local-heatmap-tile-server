@@ -1,0 +1,26 @@
+services:
+  local-heatmap:
+    build: .
+    container_name: local-heatmap-tile-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/import:/data/import
+      - ./data/db:/data/db
+      - ./data/tiles:/data/tiles
+    environment:
+      - TILE_MIN_ZOOM=2
+      - TILE_MAX_ZOOM=18
+      - IMPORT_POLL_SECONDS=30
+      - LINE_WIDTH=2.0
+      - TILE_SIZE=256
+      - PRERENDER_BATCH_SIZE=40
+      - PRERENDER_BATCH_PAUSE=0.5
+      - PRERENDER_IDLE_PAUSE=5.0
+      - PRERENDER_WORKERS=4
+      - MAX_SEGMENTS_PER_TILE=2500
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    restart: unless-stopped

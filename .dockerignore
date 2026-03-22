@@ -1,0 +1,14 @@
+.git
+.gitignore
+.claude
+.DS_Store
+.env
+.env.*
+.vscode
+.idea
+data
+*.md
+*.pmtiles
+PMTiles Viewer
+tools
+LICENSE
