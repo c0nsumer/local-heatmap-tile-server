@@ -20,8 +20,7 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 
 - **MapLibre GL JS viewer**: Built-in WebGL map with automatic light/dark mode, smooth fractional zoom, basemap selection, and bookmarkable URLs.
 - **JOSM compatible**: One-click "Open in JOSM" link with style selection.
-- **PMTiles export**: Package tiles into a single PMTiles file for static hosting or sharing.
-- **PMTiles viewer**: Includes example viewer for static PMTiles file(s) and Caddy configuration for easily serving the files.
+- **PMTiles export**: Package tiles into a single PMTiles file for static hosting or sharing. (See [PMTiles Viewer](#pmtiles-viewer) for a useful stand-alone viewer.)
 - **GPX overlay**: Drag-and-drop GPX files onto the map viewer to compare routes against the heatmap.
 - **Data Manager**: Live pre-render progress, file upload, and import/rebuild/export controls.
 
