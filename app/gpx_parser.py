@@ -1,11 +1,237 @@
-"""Parse GPX files to extract GPS tracks."""
+"""Parse GPX files to extract GPS tracks.
 
+Uses a chunked streaming approach to handle arbitrarily large files
+without loading the entire document into memory. Each <trk> block is
+extracted as text and parsed independently, so malformed XML in one
+track only skips that track — the rest are still imported.
+"""
+
+import io
 import logging
+import re
 from pathlib import Path
-
-import gpxpy
+from xml.etree.ElementTree import iterparse, fromstring, ParseError
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_ns(tag: str) -> str:
+    """Strip namespace prefix from an XML tag."""
+    if tag.startswith("{"):
+        return tag.split("}", 1)[1]
+    return tag
+
+
+def _parse_trk_block(trk_xml: str, filepath_name: str,
+                      track_index: int,
+                      ns_attrs: str = "") -> dict | None:
+    """Parse a single <trk>...</trk> XML block into a track dict.
+
+    ns_attrs contains namespace declarations extracted from the root <gpx>
+    element (e.g. 'xmlns:gpxdata="..."'), so prefixed elements inside the
+    track block can be resolved.
+
+    Returns None if the block has no valid GPS points.
+    """
+    # Wrap in a root element that carries the namespace declarations
+    wrapped = f'<?xml version="1.0"?><root {ns_attrs}>{trk_xml}</root>'
+
+    try:
+        root = fromstring(wrapped)
+    except ParseError as e:
+        logger.warning(
+            f"Skipping malformed track #{track_index + 1} in "
+            f"{filepath_name}: {e}"
+        )
+        return None
+
+    points = []
+    first_time = None
+    last_time = None
+    track_name = None
+
+    for elem in root.iter():
+        tag = _strip_ns(elem.tag)
+
+        if tag == "name" and track_name is None:
+            # First <name> in the track (not inside a trkpt)
+            track_name = elem.text
+
+    # Now parse trackpoints
+    for elem in root.iter():
+        tag = _strip_ns(elem.tag)
+        if tag == "trkpt":
+            try:
+                lat = float(elem.get("lat", ""))
+                lon = float(elem.get("lon", ""))
+            except (ValueError, TypeError):
+                continue
+
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                points.append((lat, lon))
+
+                # Look for <time> child
+                for child in elem:
+                    if _strip_ns(child.tag) == "time" and child.text:
+                        t = child.text.strip()
+                        if t:
+                            if first_time is None:
+                                first_time = t
+                            last_time = t
+                        break
+
+    if not points:
+        return None
+
+    return {
+        "points": points,
+        "start_time": first_time,
+        "end_time": last_time,
+        "track_name": track_name,
+        "filename": filepath_name,
+        "error": None,
+    }
+
+
+def parse_gpx_file_streaming(filepath: str | Path):
+    """
+    Parse a .GPX file and yield one track dict at a time.
+
+    Reads the file as text, extracts each <trk>...</trk> block, and
+    parses them independently. This approach:
+    - Handles arbitrarily large files (reads line by line)
+    - Recovers from malformed XML (bad tracks are skipped, not fatal)
+    - Frees each track's memory before parsing the next
+
+    Yields:
+        dict with:
+        {
+            "points": [(lat, lon), ...],
+            "start_time": str (ISO 8601) | None,
+            "end_time": str (ISO 8601) | None,
+            "filename": str,
+            "track_name": str | None,
+            "error": None
+        }
+    """
+    filepath = Path(filepath)
+
+    # Regex patterns to detect <trk> and </trk> tags (with optional namespace)
+    trk_open_re = re.compile(r'<(?:\w+:)?trk[\s>/]', re.IGNORECASE)
+    trk_close_re = re.compile(r'</(?:\w+:)?trk\s*>', re.IGNORECASE)
+
+    # Regex to capture the <gpx ...> opening tag (possibly spanning lines)
+    # We'll extract xmlns:* attributes to pass to each track block
+    gpx_open_re = re.compile(r'<(?:\w+:)?gpx\s', re.IGNORECASE)
+    ns_attr_re = re.compile(
+        r'''(xmlns(?::\w+)?="[^"]*"|xsi:\w+="[^"]*")''')
+
+    in_trk = False
+    in_gpx_header = False
+    trk_lines = []
+    gpx_header_lines = []
+    ns_attrs = ""
+    track_index = 0
+    skipped = 0
+
+    with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            # Before the first track, capture the <gpx> tag's namespaces
+            if not ns_attrs and not in_trk:
+                if not in_gpx_header:
+                    if gpx_open_re.search(line):
+                        in_gpx_header = True
+                        gpx_header_lines = [line]
+                        # Check if the tag closes on this line
+                        if ">" in line[line.index("<gpx") + 4
+                                       if "<gpx" in line.lower()
+                                       else 0:]:
+                            header_text = line
+                            in_gpx_header = False
+                            ns_attrs = " ".join(
+                                ns_attr_re.findall(header_text))
+                else:
+                    gpx_header_lines.append(line)
+                    if ">" in line:
+                        header_text = " ".join(gpx_header_lines)
+                        in_gpx_header = False
+                        ns_attrs = " ".join(
+                            ns_attr_re.findall(header_text))
+
+            if not in_trk:
+                # Look for a <trk> opening tag
+                match = trk_open_re.search(line)
+                if match:
+                    in_trk = True
+                    # Keep from the <trk> tag onward
+                    trk_lines = [line[match.start():]]
+
+                    # Check if </trk> is also on this same line
+                    close_match = trk_close_re.search(line, match.end())
+                    if close_match:
+                        # Complete track on one line
+                        trk_xml = line[match.start():close_match.end()]
+                        in_trk = False
+                        trk_lines = []
+
+                        result = _parse_trk_block(
+                            trk_xml, filepath.name, track_index,
+                            ns_attrs
+                        )
+                        if result is not None:
+                            yield result
+                        else:
+                            skipped += 1
+                        track_index += 1
+            else:
+                # Inside a <trk> block — accumulate lines
+                close_match = trk_close_re.search(line)
+                if close_match:
+                    # Include up to and including </trk>
+                    trk_lines.append(line[:close_match.end()])
+                    trk_xml = "".join(trk_lines)
+                    in_trk = False
+                    trk_lines = []
+
+                    result = _parse_trk_block(
+                        trk_xml, filepath.name, track_index,
+                        ns_attrs
+                    )
+                    if result is not None:
+                        yield result
+                    else:
+                        skipped += 1
+                    track_index += 1
+                else:
+                    trk_lines.append(line)
+
+    # If we ended mid-track (truncated file), try to parse what we have
+    if in_trk and trk_lines:
+        logger.warning(
+            f"File {filepath.name} appears truncated — "
+            f"track #{track_index + 1} was not closed"
+        )
+        # Try closing the tag and parsing
+        trk_xml = "".join(trk_lines) + "</trk>"
+        result = _parse_trk_block(
+            trk_xml, filepath.name, track_index, ns_attrs
+        )
+        if result is not None:
+            yield result
+        else:
+            skipped += 1
+        track_index += 1
+
+    if skipped > 0:
+        logger.warning(
+            f"{filepath.name}: skipped {skipped} tracks "
+            f"(malformed XML or no GPS data)"
+        )
+
+    logger.info(
+        f"{filepath.name}: extracted {track_index} track blocks, "
+        f"{track_index - skipped} with GPS data"
+    )
 
 
 def parse_gpx_file(filepath: str | Path) -> dict | list[dict]:
@@ -13,6 +239,10 @@ def parse_gpx_file(filepath: str | Path) -> dict | list[dict]:
     Parse a .GPX file and return GPS trackpoints.
 
     Only extracts <trk> (recorded tracks), not <rte> (planned routes).
+
+    Uses chunked streaming parsing to handle very large files (multi-GB)
+    without loading the entire document into memory. Recovers from
+    malformed XML by parsing each track independently.
 
     If the file contains multiple tracks, returns a list of result dicts
     (one per track).  If it contains a single track, returns a single dict
@@ -22,6 +252,8 @@ def parse_gpx_file(filepath: str | Path) -> dict | list[dict]:
         dict or list[dict], each with:
         {
             "points": [(lat, lon), ...],
+            "start_time": str (ISO 8601) | None,
+            "end_time": str (ISO 8601) | None,
             "filename": str,
             "error": str | None
         }
@@ -29,45 +261,32 @@ def parse_gpx_file(filepath: str | Path) -> dict | list[dict]:
     filepath = Path(filepath)
 
     try:
-        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
-            gpx = gpxpy.parse(f)
+        results = list(parse_gpx_file_streaming(filepath))
 
-        if not gpx.tracks:
+        if not results:
             return {
                 "points": [],
+                "start_time": None,
+                "end_time": None,
                 "filename": filepath.name,
                 "error": None,
             }
 
-        results = []
-        for i, track in enumerate(gpx.tracks):
-            points = []
-            for segment in track.segments:
-                for point in segment.points:
-                    lat = point.latitude
-                    lon = point.longitude
-                    if lat is not None and lon is not None:
-                        if -90 <= lat <= 90 and -180 <= lon <= 180:
-                            points.append((lat, lon))
-
-            # Build a descriptive filename for multi-track files
-            if len(gpx.tracks) > 1:
-                track_name = track.name or f"track {i + 1}"
-                filename = f"{filepath.stem} [{track_name}]{filepath.suffix}"
+        # Assign filenames based on track count
+        for i, trk in enumerate(results):
+            if len(results) > 1:
+                tname = trk.pop("track_name", None) or f"track {i + 1}"
+                trk["filename"] = (
+                    f"{filepath.stem} [{tname}]{filepath.suffix}"
+                )
             else:
-                filename = filepath.name
-
-            results.append({
-                "points": points,
-                "filename": filename,
-                "error": None,
-            })
+                trk.pop("track_name", None)
+                trk["filename"] = filepath.name
 
             logger.info(
-                f"Parsed {filename}: {len(points)} points"
+                f"Parsed {trk['filename']}: {len(trk['points'])} points"
             )
 
-        # Single track: return a plain dict for compatibility
         if len(results) == 1:
             return results[0]
 
@@ -77,6 +296,8 @@ def parse_gpx_file(filepath: str | Path) -> dict | list[dict]:
         logger.error(f"Failed to parse {filepath.name}: {e}")
         return {
             "points": [],
+            "start_time": None,
+            "end_time": None,
             "filename": filepath.name,
             "error": str(e),
         }

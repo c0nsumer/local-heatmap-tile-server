@@ -21,6 +21,8 @@ def parse_activity_file(filepath: str | Path) -> dict:
     Returns the standard result dict:
         {
             "points": [(lat, lon), ...],
+            "start_time": str (ISO 8601) | None,
+            "end_time": str (ISO 8601) | None,
             "filename": str,
             "error": str | None
         }
@@ -32,6 +34,8 @@ def parse_activity_file(filepath: str | Path) -> dict:
     if parser is None:
         return {
             "points": [],
+            "start_time": None,
+            "end_time": None,
             "filename": filepath.name,
             "error": f"Unsupported format: {ext}. Accepted: .fit, .gpx, .tcx",
         }

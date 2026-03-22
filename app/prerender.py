@@ -150,11 +150,11 @@ async def prerender_worker():
 
             if rendered_in_batch > 0:
                 logger.info(
-                    f"Pre-rendered {rendered_in_batch:,} tiles "
+                    f"Pre-rendered {rendered_in_batch} tiles "
                     f"\u00d7 {NUM_STYLES} styles "
-                    f"({rendered_in_batch * NUM_STYLES:,} images) "
-                    f"\u2014 {remaining:,} tiles remaining "
-                    f"({remaining * NUM_STYLES:,} images)"
+                    f"({rendered_in_batch * NUM_STYLES} images) "
+                    f"\u2014 {remaining} tiles remaining "
+                    f"({remaining * NUM_STYLES} images)"
                 )
 
             # Yield to let live requests through

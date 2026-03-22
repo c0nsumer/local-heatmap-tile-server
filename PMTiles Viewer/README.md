@@ -52,17 +52,41 @@ http://localhost:8080
 
 | File | Description |
 |------|-------------|
-| `pmtiles-viewer.html` | Standalone MapLibre GL JS viewer with PMTiles support |
+| `pmtiles-viewer.html` | Full-featured viewer with collapsible controls, light/dark mode, style selector, Top 10% overlay, GPX overlay |
+| `pmtiles-viewer-simple.html` | Minimal single-heatmap viewer — just the map, basemap picker, and GPX drag-and-drop |
 | `Caddyfile` | Caddy web server configuration |
 
-## Viewer Features
+## Viewer Variants
+
+### Full viewer (`pmtiles-viewer.html`)
+
+- **Light/dark mode** — Follows the OS appearance setting by default, with a manual override (Auto/Light/Dark).
+- **Collapsible controls** — Panel starts collapsed to maximize map space; click "Controls" to expand.
+- **Auto-centering** — Reads data bounds from the PMTiles header and fits the map on load (unless a bookmarked URL hash is present).
+- **Heatmap style selector** — Switch between Warm (orange/red) and Cool (blue).
+- **Top 10% overlay** — Toggle a lime green overlay highlighting the most-used routes.
+- **Basemap picker** — Auto (follows appearance mode), Dark, Light, or OpenStreetMap.
+- **GPX overlay** — Drag-and-drop GPX files with file list and remove buttons.
+- **Bookmarkable URLs** — Map position, zoom level, style, and overlay state stored in the URL hash.
+
+### Simple viewer (`pmtiles-viewer-simple.html`)
+
+- **Single heatmap** — Displays one PMTiles file (default: `warm.pmtiles`).
+- **Auto-centering** — Reads data bounds from the PMTiles header and fits the map on load.
+- **Basemap picker** — Auto (follows OS), Dark, Light, or OSM.
+- **GPX drag-and-drop** — Drop GPX files anywhere on the map.
+- **Bookmarkable URLs** — Map position and zoom level in URL hash.
+
+To change which PMTiles file it loads, edit the `PMTILES_URL` variable:
+
+```javascript
+var PMTILES_URL = './warm.pmtiles';   // default
+var PMTILES_URL = './cool.pmtiles';   // blue heatmap
+```
+
+## Common Features
 
 - **Smooth WebGL rendering** — Fractional zoom, fluid pinch/scroll, GPU-accelerated tile compositing
-- **Heatmap style selector** — Switch between Warm (orange/red) and Cool (blue)
-- **Top 10% overlay** — Toggle a lime green overlay highlighting the most-used routes
-- **Basemap picker** — CartoDB Dark, OpenStreetMap, or CartoDB Positron
-- **GPX overlay** — Drag-and-drop GPX files to display routes as white lines on top of the heatmap
-- **Bookmarkable URLs** — Map position, zoom level, style, and overlay state stored in the URL hash
 
 ## Caddy Configuration
 

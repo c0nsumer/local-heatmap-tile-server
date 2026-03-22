@@ -3,27 +3,82 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Heatmap Viewer (PMTiles)</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.21.0/dist/maplibre-gl.css" />
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;700&display=swap');
-
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  /* Light theme (default) */
   :root {
-    --bg: #0a0e14;
-    --surface: #12161e;
-    --surface2: #1a1f2b;
-    --border: #2a3040;
-    --text: #c8cdd8;
-    --text-dim: #6b7280;
-    --accent: #ffa040;
+    --bg: #f2f2f2;
+    --panel-bg: rgba(255,255,255,0.94);
+    --panel-text: #444;
+    --panel-label: #888;
+    --panel-border: #ccc;
+    --select-bg: #fff;
+    --select-text: #333;
+    --select-focus: #888;
+    --divider: #ddd;
+    --gpx-border: #bbb;
+    --gpx-border-hover: #777;
+    --gpx-text: #999;
+    --gpx-text-hover: #555;
+    --gpx-item-text: #444;
+    --gpx-remove: #aaa;
+    --gpx-remove-hover: #c44;
+    --toggle-text: #555;
+    --zoom-bg: rgba(255,255,255,0.88);
+    --zoom-border: #ddd;
+    --zoom-text: #555;
+    --zoom-label: #999;
+    --ctrl-bg: rgba(255,255,255,0.92);
+    --ctrl-border: #ccc;
+    --ctrl-divider: #ddd;
+    --ctrl-hover: #f0f0f0;
+    --ctrl-icon-invert: 0;
+    --attr-bg: rgba(255,255,255,0.7);
+    --attr-text: #777;
+    --attr-link: #555;
+  }
+
+  /* Dark theme — applied via .dark class on <html> */
+  html.dark {
+    --bg: #1a1a2e;
+    --panel-bg: rgba(30,34,46,0.94);
+    --panel-text: #c8cdd8;
+    --panel-label: #7a8194;
+    --panel-border: #3a4050;
+    --select-bg: #252a36;
+    --select-text: #c8cdd8;
+    --select-focus: #6a7080;
+    --divider: #3a4050;
+    --gpx-border: #4a5060;
+    --gpx-border-hover: #7a8090;
+    --gpx-text: #6a7080;
+    --gpx-text-hover: #a0a8b8;
+    --gpx-item-text: #c8cdd8;
+    --gpx-remove: #6a7080;
+    --gpx-remove-hover: #e05070;
+    --toggle-text: #9aa0b0;
+    --zoom-bg: rgba(30,34,46,0.88);
+    --zoom-border: #3a4050;
+    --zoom-text: #9aa0b0;
+    --zoom-label: #6a7080;
+    --ctrl-bg: rgba(30,34,46,0.92);
+    --ctrl-border: #3a4050;
+    --ctrl-divider: #3a4050;
+    --ctrl-hover: #2a3040;
+    --ctrl-icon-invert: 0.8;
+    --attr-bg: rgba(20,24,36,0.7);
+    --attr-text: #6a7080;
+    --attr-link: #7a8494;
   }
 
   body {
-    font-family: 'DM Sans', system-ui, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
-    color: var(--text);
+    color: var(--panel-text);
     height: 100vh;
     display: flex;
     flex-direction: column;
@@ -33,203 +88,295 @@
 
   .panel {
     position: absolute;
-    top: 12px;
-    right: 12px;
+    top: 10px;
+    right: 10px;
     z-index: 1000;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px;
-    min-width: 220px;
-    backdrop-filter: blur(12px);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    min-width: 190px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+    font-size: 13px;
+    color: var(--panel-text);
   }
 
-  .panel h2 {
-    font-family: 'JetBrains Mono', monospace;
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .panel-header:hover { opacity: 0.8; }
+  .panel-title {
     font-size: 11px;
+    font-weight: 600;
+    color: var(--panel-label);
     text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--text-dim);
-    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+  }
+  .panel-toggle {
+    font-size: 10px;
+    color: var(--panel-label);
+    transition: transform 0.2s;
+  }
+  .panel.collapsed .panel-toggle {
+    transform: rotate(-90deg);
+  }
+
+  .panel-body {
+    padding: 0 14px 12px;
+  }
+  .panel.collapsed .panel-body {
+    display: none;
+  }
+
+  .panel-section { margin-bottom: 10px; }
+  .panel-section:last-child { margin-bottom: 0; }
+
+  .panel-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--panel-label);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
   }
 
   .panel select {
     width: 100%;
-    background: var(--surface2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 8px;
-    font-size: 13px;
-    font-family: 'DM Sans', system-ui, sans-serif;
+    background: var(--select-bg);
+    color: var(--select-text);
+    border: 1px solid var(--panel-border);
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-size: 12px;
+    font-family: inherit;
     cursor: pointer;
   }
   .panel select:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--select-focus);
   }
 
   .overlay-toggle {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    font-size: 13px;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--toggle-text);
     cursor: pointer;
   }
   .overlay-toggle input[type="checkbox"] {
-    appearance: none;
-    width: 14px; height: 14px;
-    border: 2px solid #00ff88;
-    border-radius: 3px;
-    cursor: pointer;
-    position: relative;
-    flex-shrink: 0;
-  }
-  .overlay-toggle input[type="checkbox"]:checked {
-    background: #00ff88;
-  }
-  .overlay-toggle input[type="checkbox"]:checked::after {
-    content: '\2713'; position: absolute; top: -3px; left: 1px;
-    font-size: 11px; color: var(--bg); font-weight: bold;
+    accent-color: #4a9;
   }
 
-  .gpx-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .divider {
+    border: none;
+    border-top: 1px solid var(--divider);
+    margin: 10px 0;
+  }
+
   .gpx-drop {
-    border: 2px dashed var(--border);
-    border-radius: 6px;
-    padding: 12px 8px;
+    border: 1px dashed var(--gpx-border);
+    border-radius: 3px;
+    padding: 10px 8px;
     text-align: center;
-    font-size: 12px;
-    color: var(--text-dim);
+    font-size: 11px;
+    color: var(--gpx-text);
     cursor: pointer;
     transition: border-color 0.15s, color 0.15s;
   }
   .gpx-drop:hover, .gpx-drop.dragover {
-    border-color: var(--accent);
-    color: var(--text);
+    border-color: var(--gpx-border-hover);
+    color: var(--gpx-text-hover);
   }
   .gpx-drop input { display: none; }
-  .gpx-file-list { margin-top: 8px; font-size: 11px; }
+  .gpx-file-list { margin-top: 6px; font-size: 11px; }
   .gpx-file-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 0;
-    color: var(--text);
+    padding: 2px 0;
+    color: var(--gpx-item-text);
   }
-  .gpx-file-item .gpx-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .gpx-file-item .gpx-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
   .gpx-remove {
-    background: none; border: none; color: var(--text-dim);
-    cursor: pointer; font-size: 14px; padding: 0 4px;
-    transition: color 0.15s;
+    background: none;
+    border: none;
+    color: var(--gpx-remove);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+    line-height: 1;
   }
-  .gpx-remove:hover { color: #e04060; }
+  .gpx-remove:hover { color: var(--gpx-remove-hover); }
 
-  .stats-bar {
+  .zoom-display {
     position: absolute;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 28px;
+    left: 10px;
     z-index: 1000;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 20px;
-    display: flex;
-    gap: 24px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    background: var(--zoom-bg);
+    border: 1px solid var(--zoom-border);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: var(--zoom-text);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
-  .stat-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-  .stat-value { font-weight: 600; color: var(--accent); font-size: 14px; }
-  .stat-label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+  .zoom-display .zoom-label { color: var(--zoom-label); }
 
-  /* Override MapLibre controls for dark theme */
   .maplibregl-ctrl-group {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
+    background: var(--ctrl-bg) !important;
+    border: 1px solid var(--ctrl-border) !important;
+    border-radius: 3px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
   }
   .maplibregl-ctrl-group button {
-    background-color: var(--surface) !important;
-    color: var(--text) !important;
+    background-color: transparent !important;
+    width: 30px !important;
+    height: 30px !important;
   }
   .maplibregl-ctrl-group button + button {
-    border-top: 1px solid var(--border) !important;
+    border-top: 1px solid var(--ctrl-divider) !important;
+  }
+  .maplibregl-ctrl-group button:hover {
+    background-color: var(--ctrl-hover) !important;
   }
   .maplibregl-ctrl-group button span {
-    filter: invert(0.8);
+    filter: invert(var(--ctrl-icon-invert));
   }
   .maplibregl-ctrl-attrib {
-    background: rgba(10,14,20,0.8) !important;
-    color: var(--text-dim) !important;
+    background: var(--attr-bg) !important;
+    color: var(--attr-text) !important;
     font-size: 10px !important;
   }
-  .maplibregl-ctrl-attrib a { color: var(--text-dim) !important; }
+  .maplibregl-ctrl-attrib a { color: var(--attr-link) !important; }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div class="panel" id="panel">
-  <h2>Heatmap Style</h2>
-  <select id="style-select">
-    <option value="warm">Warm (Orange/Red)</option>
-    <option value="cool">Cool (Blue)</option>
-  </select>
-  <label class="overlay-toggle">
-    <input type="checkbox" id="top10-toggle">
-    <span>Highlight Top 10%</span>
-  </label>
-  <h2 style="margin-top:12px">Base Map</h2>
-  <select id="basemap-select">
-    <option value="carto-dark">CartoDB Dark</option>
-    <option value="osm">OpenStreetMap</option>
-    <option value="carto-light">CartoDB Positron</option>
-  </select>
-  <div class="gpx-section">
-    <h2>GPX Overlay</h2>
-    <div class="gpx-drop" id="gpx-drop">
-      Drop GPX file here or click to browse
-      <input type="file" id="gpx-file" accept=".gpx" multiple>
+<div class="panel collapsed" id="panel">
+  <div class="panel-header" id="panel-header">
+    <span class="panel-title">Controls</span>
+    <span class="panel-toggle">&#9660;</span>
+  </div>
+  <div class="panel-body" id="panel-body">
+    <div class="panel-section">
+      <div class="panel-label">Style</div>
+      <select id="style-select">
+        <option value="warm">Warm</option>
+        <option value="cool">Cool</option>
+      </select>
+      <label class="overlay-toggle">
+        <input type="checkbox" id="top10-toggle">
+        <span>Top 10% overlay</span>
+      </label>
     </div>
-    <div class="gpx-file-list" id="gpx-file-list"></div>
+    <hr class="divider">
+    <div class="panel-section">
+      <div class="panel-label">Basemap</div>
+      <select id="basemap-select">
+        <option value="auto">Auto (system)</option>
+        <option value="carto-dark">Dark</option>
+        <option value="carto-light">Light</option>
+        <option value="osm">OpenStreetMap</option>
+      </select>
+    </div>
+    <hr class="divider">
+    <div class="panel-section">
+      <div class="panel-label">Appearance</div>
+      <select id="appearance-select">
+        <option value="auto">Auto (system)</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
+    <hr class="divider">
+    <div class="panel-section">
+      <div class="panel-label">GPX overlay</div>
+      <div class="gpx-drop" id="gpx-drop">
+        Drop GPX here or click to browse
+        <input type="file" id="gpx-file" accept=".gpx" multiple>
+      </div>
+      <div class="gpx-file-list" id="gpx-file-list"></div>
+    </div>
   </div>
 </div>
 
-<div class="stats-bar">
-  <div class="stat-item">
-    <span class="stat-value" id="stat-zoom">--</span>
-    <span class="stat-label">Zoom</span>
-  </div>
-</div>
+<div class="zoom-display" id="zoom-display"><span class="zoom-label">Zoom</span> <span id="zoom-value">--</span></div>
 
 <script src="https://unpkg.com/maplibre-gl@5.21.0/dist/maplibre-gl.js"></script>
-<script src="https://unpkg.com/pmtiles@3.7.0/dist/pmtiles.js"></script>
+<script src="https://unpkg.com/pmtiles@4.4.0/dist/pmtiles.js"></script>
 <script src="https://unpkg.com/@mapbox/togeojson@0.16.2/togeojson.js"></script>
 <script>
 (function() {
-  // ---- CONFIGURATION ----
-  // Set this to the base URL where your .pmtiles files are hosted.
-  // If serving from the same directory as this HTML file, use '.' (dot).
-  // Examples:
-  //   '.'                                   (same directory as this HTML file)
-  //   'https://tiles.example.com'           (remote CDN)
-  //   'http://localhost:8080'               (local Caddy)
   var PMTILES_BASE = '.';
 
-  // ---- Register PMTiles protocol ----
   var protocol = new pmtiles.Protocol();
   maplibregl.addProtocol('pmtiles', protocol.tile);
 
-  // Parse URL hash: #z/lat/lon/style[/top10]
+  // --- Appearance (light/dark/auto) ---
+  var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+  var appearanceMode = 'auto'; // 'auto', 'light', 'dark'
+
+  function isDark() {
+    if (appearanceMode === 'dark') return true;
+    if (appearanceMode === 'light') return false;
+    return darkMq.matches;
+  }
+
+  function applyAppearance() {
+    if (isDark()) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    // Update basemap if set to auto
+    if (map && currentBasemapKey() === 'auto') {
+      map.getSource('basemap').setTiles(getBasemapTiles('auto'));
+    }
+  }
+
+  // Apply immediately based on OS default
+  if (darkMq.matches) {
+    document.documentElement.classList.add('dark');
+  }
+
+  // --- Basemap helpers ---
+  function expandCartoUrl(template) {
+    return ['a','b','c','d'].map(function(s) {
+      return template.replace('{s}', s).replace('{r}', '@2x');
+    });
+  }
+
+  function getBasemapTiles(key) {
+    if (key === 'auto') key = isDark() ? 'carto-dark' : 'carto-light';
+    if (key === 'osm') return ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'];
+    if (key === 'carto-light') return expandCartoUrl('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png');
+    return expandCartoUrl('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+  }
+
+  function currentBasemapKey() {
+    return document.getElementById('basemap-select').value;
+  }
+
+  // --- Parse URL hash: #z/lat/lon/style[/top10] ---
   var initCenter = [-98.5833, 39.8333];
   var initZoom = 10;
   var initStyle = 'warm';
   var initTop10 = false;
+  var hasHash = false;
   var hash = window.location.hash.replace('#', '');
   if (hash) {
     var parts = hash.split('/');
@@ -240,6 +387,7 @@
       if (!isNaN(z) && !isNaN(lat) && !isNaN(lon)) {
         initZoom = z;
         initCenter = [lon, lat];
+        hasHash = true;
       }
     }
     if (parts.length >= 4 && (parts[3] === 'warm' || parts[3] === 'cool')) {
@@ -253,31 +401,17 @@
   var currentStyle = initStyle;
   document.getElementById('style-select').value = currentStyle;
 
-  // Basemap tile URLs
-  function expandCartoUrl(template) {
-    var subdomains = ['a', 'b', 'c', 'd'];
-    return subdomains.map(function(s) {
-      return template.replace('{s}', s).replace('{r}', '@2x');
-    });
-  }
-
-  function getBasemapTiles(key) {
-    if (key === 'osm') return ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'];
-    if (key === 'carto-light') return expandCartoUrl('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png');
-    return expandCartoUrl('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
-  }
-
   function pmtilesUrl(style) {
     return 'pmtiles://' + PMTILES_BASE + '/' + style + '.pmtiles';
   }
 
-  // Build initial style
+  // --- Build map ---
   var mapStyleSpec = {
     version: 8,
     sources: {
       'basemap': {
         type: 'raster',
-        tiles: getBasemapTiles('carto-dark'),
+        tiles: getBasemapTiles('auto'),
         tileSize: 256,
         maxzoom: 20,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
@@ -318,18 +452,58 @@
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
   map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
+  // Auto-center on data bounds if no URL hash
+  if (!hasHash) {
+    var p = new pmtiles.PMTiles(PMTILES_BASE + '/' + currentStyle + '.pmtiles');
+    p.getHeader().then(function(h) {
+      if (h.minLon !== undefined && h.maxLon !== undefined &&
+          h.minLat !== undefined && h.maxLat !== undefined &&
+          (h.minLon !== 0 || h.maxLon !== 0 || h.minLat !== 0 || h.maxLat !== 0)) {
+        map.fitBounds(
+          [[h.minLon, h.minLat], [h.maxLon, h.maxLat]],
+          { padding: 40, animate: false }
+        );
+      }
+    }).catch(function(err) {
+      console.warn('Could not read PMTiles header for auto-centering:', err);
+    });
+  }
+
+  // Handle tile load errors
+  map.on('error', function(e) {
+    if (e.error && e.error.message && e.error.message.indexOf('pmtiles') !== -1) {
+      console.error('PMTiles load error:', e.error.message);
+    }
+  });
+
+  // --- Listen for OS color scheme changes ---
+  darkMq.addEventListener('change', function() {
+    if (appearanceMode === 'auto') {
+      applyAppearance();
+    }
+  });
+
+  // --- Appearance toggle ---
+  document.getElementById('appearance-select').addEventListener('change', function(e) {
+    appearanceMode = e.target.value;
+    applyAppearance();
+  });
+
+  // --- Panel collapse ---
+  document.getElementById('panel-header').addEventListener('click', function() {
+    document.getElementById('panel').classList.toggle('collapsed');
+  });
+
+  // --- Controls ---
   var top10Toggle = document.getElementById('top10-toggle');
   if (initTop10) top10Toggle.checked = true;
 
-  // --- Basemap switching ---
   document.getElementById('basemap-select').addEventListener('change', function(e) {
     map.getSource('basemap').setTiles(getBasemapTiles(e.target.value));
   });
 
-  // --- Heatmap style switching ---
   document.getElementById('style-select').addEventListener('change', function(e) {
     currentStyle = e.target.value;
-    // Remove and re-add the heatmap source+layer for PMTiles URL change
     if (map.getLayer('heatmap')) map.removeLayer('heatmap');
     if (map.getSource('heatmap')) map.removeSource('heatmap');
     map.addSource('heatmap', {
@@ -337,7 +511,6 @@
       url: pmtilesUrl(currentStyle),
       tileSize: 256
     });
-    // Insert heatmap layer after basemap but before top10
     var beforeLayer = map.getLayer('top10') ? 'top10' : undefined;
     map.addLayer({
       id: 'heatmap', type: 'raster', source: 'heatmap',
@@ -346,7 +519,6 @@
     updateHash();
   });
 
-  // --- Top 10% overlay toggle ---
   top10Toggle.addEventListener('change', function() {
     if (this.checked) {
       if (!map.getLayer('top10')) {
@@ -361,17 +533,18 @@
     updateHash();
   });
 
-  // --- Zoom display and URL hash ---
+  // --- Zoom + URL hash ---
   function updateHash() {
     var c = map.getCenter();
     var z = map.getZoom();
-    document.getElementById('stat-zoom').textContent = z.toFixed(1);
+    document.getElementById('zoom-value').textContent = z.toFixed(1);
     var hashStr = z.toFixed(1) + '/' + c.lat.toFixed(4) + '/' + c.lng.toFixed(4) + '/' + currentStyle;
     if (top10Toggle.checked) hashStr += '/top10';
     history.replaceState(null, null, '#' + hashStr);
   }
   map.on('moveend', updateHash);
-  map.on('load', updateHash);
+  map.once('idle', updateHash);
+  updateHash();
 
   // --- GPX overlay ---
   var gpxCounter = 0;
@@ -382,8 +555,7 @@
     var reader = new FileReader();
     reader.onload = function(e) {
       try {
-        var parser = new DOMParser();
-        var gpxDoc = parser.parseFromString(e.target.result, 'text/xml');
+        var gpxDoc = new DOMParser().parseFromString(e.target.result, 'text/xml');
         var geojson = toGeoJSON.gpx(gpxDoc);
 
         gpxCounter++;
@@ -392,7 +564,6 @@
         var lineId = 'gpx-line-' + gpxCounter;
 
         map.addSource(sourceId, { type: 'geojson', data: geojson });
-
         map.addLayer({
           id: outlineId, type: 'line', source: sourceId,
           layout: { 'line-join': 'round', 'line-cap': 'round' },
@@ -407,28 +578,24 @@
         gpxLayers[file.name] = { sourceId: sourceId, outlineId: outlineId, lineId: lineId };
         updateGpxFileList();
 
-        // Fit to GPX bounds
         try {
           var coords = [];
           geojson.features.forEach(function(f) {
             if (f.geometry && f.geometry.coordinates) {
               var c = f.geometry.coordinates;
-              if (f.geometry.type === 'LineString') {
-                c.forEach(function(p) { coords.push(p); });
-              } else if (f.geometry.type === 'MultiLineString') {
-                c.forEach(function(line) { line.forEach(function(p) { coords.push(p); }); });
-              }
+              if (f.geometry.type === 'Point') coords.push(c);
+              else if (f.geometry.type === 'LineString') c.forEach(function(p) { coords.push(p); });
+              else if (f.geometry.type === 'MultiLineString') c.forEach(function(l) { l.forEach(function(p) { coords.push(p); }); });
             }
           });
           if (coords.length > 0) {
-            var bounds = coords.reduce(function(b, c) {
-              return b.extend(c);
-            }, new maplibregl.LngLatBounds(coords[0], coords[0]));
+            var bounds = coords.reduce(function(b, c) { return b.extend(c); },
+              new maplibregl.LngLatBounds(coords[0], coords[0]));
             map.fitBounds(bounds, { padding: 50 });
           }
         } catch(boundsErr) {}
       } catch(err) {
-        alert('Failed to parse GPX file: ' + file.name + '\n' + err.message);
+        alert('Failed to parse GPX: ' + file.name + '\n' + err.message);
       }
     };
     reader.readAsText(file);
@@ -457,7 +624,7 @@
       var btn = document.createElement('button');
       btn.className = 'gpx-remove';
       btn.textContent = '\u00d7';
-      btn.title = 'Remove overlay';
+      btn.title = 'Remove';
       btn.onclick = function() { removeGpxFile(name); };
       item.appendChild(nameSpan);
       item.appendChild(btn);
@@ -465,7 +632,6 @@
     });
   }
 
-  // File picker
   var gpxDrop = document.getElementById('gpx-drop');
   var gpxInput = document.getElementById('gpx-file');
   gpxDrop.addEventListener('click', function() { gpxInput.click(); });
@@ -474,14 +640,8 @@
     this.value = '';
   });
 
-  // Drag and drop on drop zone
-  gpxDrop.addEventListener('dragover', function(e) {
-    e.preventDefault();
-    gpxDrop.classList.add('dragover');
-  });
-  gpxDrop.addEventListener('dragleave', function() {
-    gpxDrop.classList.remove('dragover');
-  });
+  gpxDrop.addEventListener('dragover', function(e) { e.preventDefault(); gpxDrop.classList.add('dragover'); });
+  gpxDrop.addEventListener('dragleave', function() { gpxDrop.classList.remove('dragover'); });
   gpxDrop.addEventListener('drop', function(e) {
     e.preventDefault();
     gpxDrop.classList.remove('dragover');
@@ -490,7 +650,6 @@
     });
   });
 
-  // Drag and drop anywhere on map
   var mapEl = document.getElementById('map');
   mapEl.addEventListener('dragover', function(e) { e.preventDefault(); });
   mapEl.addEventListener('drop', function(e) {

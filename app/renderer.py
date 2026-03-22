@@ -157,7 +157,13 @@ def render_tile(segments: list[list[tuple[float, float]]],
     int_width = max(1, int(width))
 
     margin = TILE_SIZE * 0.5
-    max_seg_len = TILE_SIZE * 2
+
+    # Maximum geographic distance (in km) between consecutive GPS points
+    # before we consider it a jump (driving between activities, GPS glitch,
+    # etc.) rather than actual movement.  Normal GPS recordings produce
+    # points every 1-10 seconds, so even at highway speed consecutive
+    # points are well under 1km apart.
+    MAX_GAP_KM = 1.0
 
     # Draw all tracks onto a single grayscale image, then accumulate.
     # Each track gets its own image so overlapping tracks add intensity.
@@ -183,9 +189,17 @@ def render_tile(segments: list[list[tuple[float, float]]],
         in_bounds = ((seg_max_x >= -margin) & (seg_min_x <= TILE_SIZE + margin) &
                      (seg_max_y >= -margin) & (seg_min_y <= TILE_SIZE + margin))
 
-        # Skip impossibly long segments (GPS jumps)
-        dists = np.sqrt((x1s - x0s)**2 + (y1s - y0s)**2)
-        valid = in_bounds & (dists <= max_seg_len)
+        # Compute geographic distance between consecutive points (in km)
+        # using equirectangular approximation — fast and accurate enough
+        # for detecting jumps.
+        lats0, lons0 = pts[:-1, 0], pts[:-1, 1]
+        lats1, lons1 = pts[1:, 0], pts[1:, 1]
+        avg_lat_rad = np.radians((lats0 + lats1) / 2.0)
+        dlat = np.radians(lats1 - lats0)
+        dlon = np.radians(lons1 - lons0) * np.cos(avg_lat_rad)
+        geo_dist_km = 6371.0 * np.sqrt(dlat**2 + dlon**2)
+
+        valid = in_bounds & (geo_dist_km <= MAX_GAP_KM)
 
         if not np.any(valid):
             continue

@@ -15,8 +15,8 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 - **PMTiles export** — Package tiles into a single PMTiles file for static hosting or sharing.
 - **PMTiles viewer** -- Includes example viewer for static PMTiles file(s) and Caddy configuration for easily serving the files.
 - **nginx static serving** — Pre-rendered tiles served directly from disk by nginx for fast loading.
-- **JOSM compatible** — One-click "Open in JOSM" button with style selection.
-- **MapLibre GL JS viewer** — Built-in dark-themed WebGL map with smooth fractional zoom, basemap selection, and bookmarkable URLs.
+- **JOSM compatible** — One-click "Open in JOSM" link with style selection.
+- **MapLibre GL JS viewer** — Built-in WebGL map with automatic light/dark mode, smooth fractional zoom, basemap selection, and bookmarkable URLs.
 - **Data Manager** — Live pre-render progress, file upload, and import/rebuild/export controls.
 - **Incremental updates** — Only tiles affected by new data are re-rendered.
 - **Duplicate detection** — Files are SHA256-hashed to prevent re-importing.
@@ -228,9 +228,9 @@ See `tools/README.md` for details.
 - nginx (static tile serving)
 - supervisor (process management)
 
-**Client (browser):**
-- MapLibre GL JS (WebGL map rendering)
-- toGeoJSON (client-side GPX parsing)
+**Client (loaded from CDN by the browser):**
+- [MapLibre GL JS](https://maplibre.org/projects/gl-js/) (WebGL map rendering)
+- [toGeoJSON](https://github.com/mapbox/togeojson) (client-side GPX parsing)
 
 ## Author
 

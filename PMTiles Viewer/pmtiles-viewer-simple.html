@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Heatmap Viewer (PMTiles)</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.21.0/dist/maplibre-gl.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* Light theme (default) */
+  :root {
+    --bg: #f2f2f2;
+    --panel-bg: rgba(255,255,255,0.94);
+    --panel-text: #444;
+    --panel-label: #888;
+    --panel-border: #ccc;
+    --select-bg: #fff;
+    --select-text: #333;
+    --select-focus: #888;
+    --zoom-bg: rgba(255,255,255,0.88);
+    --zoom-border: #ddd;
+    --zoom-text: #555;
+    --zoom-label: #999;
+    --ctrl-bg: rgba(255,255,255,0.92);
+    --ctrl-border: #ccc;
+    --ctrl-divider: #ddd;
+    --ctrl-hover: #f0f0f0;
+    --ctrl-icon-invert: 0;
+    --attr-bg: rgba(255,255,255,0.7);
+    --attr-text: #777;
+    --attr-link: #555;
+  }
+
+  /* Dark theme — applied via .dark class on <html> */
+  html.dark {
+    --bg: #1a1a2e;
+    --panel-bg: rgba(30,34,46,0.94);
+    --panel-text: #c8cdd8;
+    --panel-label: #7a8194;
+    --panel-border: #3a4050;
+    --select-bg: #252a36;
+    --select-text: #c8cdd8;
+    --select-focus: #6a7080;
+    --zoom-bg: rgba(30,34,46,0.88);
+    --zoom-border: #3a4050;
+    --zoom-text: #9aa0b0;
+    --zoom-label: #6a7080;
+    --ctrl-bg: rgba(30,34,46,0.92);
+    --ctrl-border: #3a4050;
+    --ctrl-divider: #3a4050;
+    --ctrl-hover: #2a3040;
+    --ctrl-icon-invert: 0.8;
+    --attr-bg: rgba(20,24,36,0.7);
+    --attr-text: #6a7080;
+    --attr-link: #7a8494;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--panel-text);
+    height: 100vh;
+  }
+
+  #map { width: 100%; height: 100%; background: var(--bg); }
+
+  .basemap-ctrl {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 4px;
+    padding: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  }
+  .basemap-ctrl select {
+    background: var(--select-bg);
+    color: var(--select-text);
+    border: 1px solid var(--panel-border);
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .basemap-ctrl select:focus {
+    outline: none;
+    border-color: var(--select-focus);
+  }
+
+  .zoom-display {
+    position: absolute;
+    bottom: 28px;
+    left: 10px;
+    z-index: 1000;
+    background: var(--zoom-bg);
+    border: 1px solid var(--zoom-border);
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: var(--zoom-text);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .zoom-display .zoom-label { color: var(--zoom-label); }
+
+  .maplibregl-ctrl-group {
+    background: var(--ctrl-bg) !important;
+    border: 1px solid var(--ctrl-border) !important;
+    border-radius: 3px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
+  }
+  .maplibregl-ctrl-group button {
+    background-color: transparent !important;
+    width: 30px !important;
+    height: 30px !important;
+  }
+  .maplibregl-ctrl-group button + button {
+    border-top: 1px solid var(--ctrl-divider) !important;
+  }
+  .maplibregl-ctrl-group button:hover {
+    background-color: var(--ctrl-hover) !important;
+  }
+  .maplibregl-ctrl-group button span {
+    filter: invert(var(--ctrl-icon-invert));
+  }
+  .maplibregl-ctrl-attrib {
+    background: var(--attr-bg) !important;
+    color: var(--attr-text) !important;
+    font-size: 10px !important;
+  }
+  .maplibregl-ctrl-attrib a { color: var(--attr-link) !important; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="basemap-ctrl">
+  <select id="basemap-select">
+    <option value="auto">Auto</option>
+    <option value="carto-dark">Dark</option>
+    <option value="carto-light">Light</option>
+    <option value="osm">OSM</option>
+  </select>
+</div>
+
+<div class="zoom-display" id="zoom-display"><span class="zoom-label">Zoom</span> <span id="zoom-value">--</span></div>
+
+<script src="https://unpkg.com/maplibre-gl@5.21.0/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/pmtiles@4.4.0/dist/pmtiles.js"></script>
+<script src="https://unpkg.com/@mapbox/togeojson@0.16.2/togeojson.js"></script>
+<script>
+(function() {
+  // ---- CONFIGURATION ----
+  var PMTILES_URL = './warm.pmtiles';
+
+  // ---- Appearance (follows OS) ----
+  var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function isDark() { return darkMq.matches; }
+
+  function applyAppearance() {
+    if (isDark()) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    if (map && currentBasemapKey() === 'auto') {
+      map.getSource('basemap').setTiles(getBasemapTiles('auto'));
+    }
+  }
+
+  // Apply immediately based on OS default
+  if (darkMq.matches) {
+    document.documentElement.classList.add('dark');
+  }
+
+  darkMq.addEventListener('change', applyAppearance);
+
+  // ---- Register PMTiles protocol ----
+  var protocol = new pmtiles.Protocol();
+  maplibregl.addProtocol('pmtiles', protocol.tile);
+
+  // Parse URL hash: #z/lat/lon
+  var initCenter = [-98.5833, 39.8333];
+  var initZoom = 10;
+  var hasHash = false;
+  var hash = window.location.hash.replace('#', '');
+  if (hash) {
+    var parts = hash.split('/');
+    if (parts.length >= 3) {
+      var z = parseFloat(parts[0]);
+      var lat = parseFloat(parts[1]);
+      var lon = parseFloat(parts[2]);
+      if (!isNaN(z) && !isNaN(lat) && !isNaN(lon)) {
+        initZoom = z;
+        initCenter = [lon, lat];
+        hasHash = true;
+      }
+    }
+  }
+
+  // Basemap helpers
+  function expandCartoUrl(template) {
+    return ['a','b','c','d'].map(function(s) {
+      return template.replace('{s}', s).replace('{r}', '@2x');
+    });
+  }
+  function getBasemapTiles(key) {
+    if (key === 'auto') key = isDark() ? 'carto-dark' : 'carto-light';
+    if (key === 'osm') return ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'];
+    if (key === 'carto-light') return expandCartoUrl('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png');
+    return expandCartoUrl('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+  }
+  function currentBasemapKey() {
+    return document.getElementById('basemap-select').value;
+  }
+
+  var map = new maplibregl.Map({
+    container: 'map',
+    style: {
+      version: 8,
+      sources: {
+        'basemap': {
+          type: 'raster',
+          tiles: getBasemapTiles('auto'),
+          tileSize: 256,
+          maxzoom: 20,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
+        },
+        'heatmap': {
+          type: 'raster',
+          url: 'pmtiles://' + PMTILES_URL,
+          tileSize: 256
+        }
+      },
+      layers: [
+        { id: 'basemap', type: 'raster', source: 'basemap' },
+        { id: 'heatmap', type: 'raster', source: 'heatmap', paint: { 'raster-opacity': 0.85 } }
+      ]
+    },
+    center: initCenter,
+    zoom: initZoom,
+    maxZoom: 20,
+    attributionControl: false
+  });
+
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+
+  // Auto-center on data bounds if no URL hash
+  if (!hasHash) {
+    var p = new pmtiles.PMTiles(PMTILES_URL);
+    p.getHeader().then(function(h) {
+      if (h.minLon !== undefined && h.maxLon !== undefined &&
+          h.minLat !== undefined && h.maxLat !== undefined &&
+          (h.minLon !== 0 || h.maxLon !== 0 || h.minLat !== 0 || h.maxLat !== 0)) {
+        map.fitBounds(
+          [[h.minLon, h.minLat], [h.maxLon, h.maxLat]],
+          { padding: 40, animate: false }
+        );
+      }
+    }).catch(function(err) {
+      console.warn('Could not read PMTiles header for auto-centering:', err);
+    });
+  }
+
+  // Handle tile load errors
+  map.on('error', function(e) {
+    if (e.error && e.error.message && e.error.message.indexOf('pmtiles') !== -1) {
+      console.error('PMTiles load error:', e.error.message);
+    }
+  });
+
+  // Basemap switching
+  document.getElementById('basemap-select').addEventListener('change', function(e) {
+    map.getSource('basemap').setTiles(getBasemapTiles(e.target.value));
+  });
+
+  // Zoom display + URL hash
+  function updateHash() {
+    var c = map.getCenter();
+    var z = map.getZoom();
+    document.getElementById('zoom-value').textContent = z.toFixed(1);
+    history.replaceState(null, null, '#' + z.toFixed(1) + '/' + c.lat.toFixed(4) + '/' + c.lng.toFixed(4));
+  }
+  map.on('moveend', updateHash);
+  map.once('idle', updateHash);
+  updateHash();
+
+  // GPX drag-and-drop (anywhere on map)
+  var gpxCounter = 0;
+  var mapEl = document.getElementById('map');
+
+  mapEl.addEventListener('dragover', function(e) { e.preventDefault(); });
+  mapEl.addEventListener('drop', function(e) {
+    e.preventDefault();
+    Array.from(e.dataTransfer.files).forEach(function(f) {
+      if (!f.name.toLowerCase().endsWith('.gpx')) return;
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        try {
+          var doc = new DOMParser().parseFromString(ev.target.result, 'text/xml');
+          var geojson = toGeoJSON.gpx(doc);
+          gpxCounter++;
+          var srcId = 'gpx-' + gpxCounter;
+          map.addSource(srcId, { type: 'geojson', data: geojson });
+          map.addLayer({
+            id: srcId + '-outline', type: 'line', source: srcId,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#000000', 'line-width': 5, 'line-opacity': 0.5 }
+          });
+          map.addLayer({
+            id: srcId + '-line', type: 'line', source: srcId,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: { 'line-color': '#ffffff', 'line-width': 3, 'line-opacity': 0.95 }
+          });
+          var coords = [];
+          geojson.features.forEach(function(feat) {
+            if (!feat.geometry || !feat.geometry.coordinates) return;
+            var c = feat.geometry.coordinates;
+            if (feat.geometry.type === 'Point') coords.push(c);
+            else if (feat.geometry.type === 'LineString') c.forEach(function(p) { coords.push(p); });
+            else if (feat.geometry.type === 'MultiLineString') c.forEach(function(l) { l.forEach(function(p) { coords.push(p); }); });
+          });
+          if (coords.length > 0) {
+            var bounds = coords.reduce(function(b, c) { return b.extend(c); },
+              new maplibregl.LngLatBounds(coords[0], coords[0]));
+            map.fitBounds(bounds, { padding: 50 });
+          }
+        } catch(err) { console.warn('Failed to parse GPX:', err); }
+      };
+      reader.readAsText(f);
+    });
+  });
+})();
+</script>
+</body>
+</html>

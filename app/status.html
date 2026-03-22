@@ -322,6 +322,10 @@
       <span class="stat-value" id="total-points">--</span>
     </div>
     <div class="stat-row">
+      <span class="stat-label">Date range</span>
+      <span class="stat-value" id="date-range">--</span>
+    </div>
+    <div class="stat-row">
       <span class="stat-label">Data bounds (SW)</span>
       <span class="stat-value" id="bounds-sw">--</span>
     </div>
@@ -393,7 +397,7 @@
 
 </div>
 
-<div class="last-updated"><span id="stat-version"></span> &middot; Auto-refresh: <span id="refresh-time">--</span></div>
+<div class="last-updated"><a href="https://github.com/c0nsumer/local-heatmap-tile-server" style="color: var(--accent-blue); text-decoration: none;">Local Heatmap Tile Server</a> <span id="stat-version"></span> by <a href="https://nuxx.net" style="color: var(--accent-blue); text-decoration: none;">Steve Vigneau</a> &middot; Auto-refresh: <span id="refresh-time">--</span></div>
 
 <script>
 (function() {
@@ -432,14 +436,14 @@
     const el = document.getElementById(id);
     el.textContent = text;
     el.style.color = color || 'var(--accent)';
-    el.style.display = '';
+    el.style.display = 'block';
   }
 
   function showMsgHtml(id, html, color) {
     const el = document.getElementById(id);
     el.innerHTML = html;
     el.style.color = color || 'var(--accent)';
-    el.style.display = '';
+    el.style.display = 'block';
   }
 
   function hideMsg(id) {
@@ -589,6 +593,12 @@
           formatCoord(d.bounds.min_lat, d.bounds.min_lon);
         document.getElementById('bounds-ne').textContent =
           formatCoord(d.bounds.max_lat, d.bounds.max_lon);
+      }
+
+      if (d.date_range) {
+        var earliest = d.date_range.earliest ? d.date_range.earliest.substring(0, 10) : '?';
+        var latest = d.date_range.latest ? d.date_range.latest.substring(0, 10) : '?';
+        document.getElementById('date-range').textContent = earliest + ' \u2014 ' + latest;
       }
 
       if (d.version) {

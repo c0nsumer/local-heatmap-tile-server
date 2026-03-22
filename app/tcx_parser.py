@@ -69,6 +69,16 @@ def _get_position(trackpoint: ET.Element) -> tuple[float, float] | None:
     return None
 
 
+def _get_time(trackpoint: ET.Element) -> str | None:
+    """Extract timestamp from a Trackpoint element."""
+    time_el = trackpoint.find(f"{{{_TCX_NS}}}Time")
+    if time_el is None:
+        time_el = trackpoint.find("Time")
+    if time_el is not None and time_el.text:
+        return time_el.text
+    return None
+
+
 def parse_tcx_file(filepath: str | Path) -> dict:
     """
     Parse a .TCX file and return GPS trackpoints.
@@ -76,6 +86,8 @@ def parse_tcx_file(filepath: str | Path) -> dict:
     Returns:
         {
             "points": [(lat, lon), ...],
+            "start_time": str (ISO 8601) | None,
+            "end_time": str (ISO 8601) | None,
             "filename": str,
             "error": str | None
         }
@@ -83,6 +95,8 @@ def parse_tcx_file(filepath: str | Path) -> dict:
     filepath = Path(filepath)
     result = {
         "points": [],
+        "start_time": None,
+        "end_time": None,
         "filename": filepath.name,
         "error": None,
     }
@@ -98,13 +112,23 @@ def parse_tcx_file(filepath: str | Path) -> dict:
 
         # Extract GPS points from all activities
         points = []
+        first_time = None
+        last_time = None
+
         for activity in activities:
             for tp in _find_trackpoints(activity):
                 pos = _get_position(tp)
                 if pos is not None:
                     points.append(pos)
+                    ts = _get_time(tp)
+                    if ts is not None:
+                        if first_time is None:
+                            first_time = ts
+                        last_time = ts
 
         result["points"] = points
+        result["start_time"] = first_time
+        result["end_time"] = last_time
 
         logger.info(
             f"Parsed {filepath.name}: {len(points)} points"

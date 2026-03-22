@@ -415,17 +415,39 @@ async def export_pmtiles(style: str = "warm"):
             if tile_count == 0:
                 return None, "No tiles found for this style", 0
 
+            # Compute actual data bounds for the header
+            from app.database import get_conn as _get_conn
+            with _get_conn() as _conn:
+                _brow = _conn.execute(
+                    """SELECT MIN(bounds_min_lat) as min_lat,
+                              MIN(bounds_min_lon) as min_lon,
+                              MAX(bounds_max_lat) as max_lat,
+                              MAX(bounds_max_lon) as max_lon
+                       FROM files"""
+                ).fetchone()
+            if _brow and _brow["min_lat"] is not None:
+                min_lat_e7 = int(_brow["min_lat"] * 1e7)
+                min_lon_e7 = int(_brow["min_lon"] * 1e7)
+                max_lat_e7 = int(_brow["max_lat"] * 1e7)
+                max_lon_e7 = int(_brow["max_lon"] * 1e7)
+                center_lon_e7 = (min_lon_e7 + max_lon_e7) // 2
+                center_lat_e7 = (min_lat_e7 + max_lat_e7) // 2
+            else:
+                min_lat_e7, min_lon_e7 = -900000000, -1800000000
+                max_lat_e7, max_lon_e7 = 900000000, 1800000000
+                center_lon_e7, center_lat_e7 = 0, 0
+
             header = {
                 "tile_type": TileType.PNG,
                 "tile_compression": Compression.NONE,
                 "min_zoom": min_zoom,
                 "max_zoom": max_zoom,
-                "min_lon_e7": -1800000000,
-                "min_lat_e7": -900000000,
-                "max_lon_e7": 1800000000,
-                "max_lat_e7": 900000000,
-                "center_lon_e7": 0,
-                "center_lat_e7": 0,
+                "min_lon_e7": min_lon_e7,
+                "min_lat_e7": min_lat_e7,
+                "max_lon_e7": max_lon_e7,
+                "max_lat_e7": max_lat_e7,
+                "center_lon_e7": center_lon_e7,
+                "center_lat_e7": center_lat_e7,
                 "center_zoom": (min_zoom + max_zoom) // 2,
             }
             metadata = {

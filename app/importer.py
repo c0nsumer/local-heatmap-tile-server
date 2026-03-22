@@ -1,6 +1,7 @@
 """Watch import directory for new activity files and process them."""
 
 import asyncio
+import gc
 import shutil
 import os
 import logging
@@ -10,6 +11,7 @@ from app.database import (
     file_hash, file_already_imported, insert_file, mark_tiles_dirty
 )
 from app.parser import parse_activity_file, SUPPORTED_EXTENSIONS
+from app.gpx_parser import parse_gpx_file_streaming
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +75,9 @@ def _import_one_activity(filepath: Path, fhash: str, parsed: dict,
     insert_file(
         filename=parsed["filename"],
         fhash=effective_hash,
-        points=parsed["points"]
+        points=parsed["points"],
+        start_time=parsed.get("start_time"),
+        end_time=parsed.get("end_time"),
     )
 
     # Mark affected tiles as dirty using ALL points — no sampling.
@@ -91,6 +95,88 @@ def _import_one_activity(filepath: Path, fhash: str, parsed: dict,
     return result
 
 
+def _import_gpx_streaming(filepath: Path, fhash: str,
+                          move_after: bool = True) -> list[dict]:
+    """Import a GPX file using streaming parsing.
+
+    Processes one track at a time to keep memory usage low, even for
+    multi-GB GPX exports with thousands of tracks.
+    """
+    results = []
+    track_count = 0
+    any_error = False
+
+    try:
+        for track in parse_gpx_file_streaming(filepath):
+            track_index = track_count
+            track_count += 1
+
+            # Build descriptive filename — we always use [track_name]
+            # format since we don't know the total count ahead of time.
+            # For single-track files this will be cleaned up after.
+            track_name = track.get("track_name") or f"track {track_count}"
+            track["filename"] = (
+                f"{filepath.stem} [{track_name}]{filepath.suffix}"
+            )
+
+            logger.info(
+                f"Parsed {track['filename']}: "
+                f"{len(track['points'])} points"
+            )
+
+            result = _import_one_activity(
+                filepath, fhash, track, track_index=track_index
+            )
+            results.append(result)
+
+            if result["status"] == "error":
+                any_error = True
+
+            # Explicitly free the track's points to release memory
+            # before parsing the next track
+            track["points"] = None
+            del track
+            gc.collect()
+
+    except Exception as e:
+        logger.error(f"Failed to parse {filepath.name}: {e}")
+        results.append({
+            "filename": filepath.name,
+            "status": "error",
+            "num_points": 0,
+            "error": str(e),
+        })
+        any_error = True
+
+    # If only one track was found, simplify the filename in the result
+    if len(results) == 1 and results[0].get("filename"):
+        results[0]["filename"] = filepath.name
+
+    if track_count == 0 and not results:
+        results.append({
+            "filename": filepath.name,
+            "status": "no_gps_data",
+            "num_points": 0,
+            "error": None,
+        })
+
+    if move_after:
+        try:
+            _move_file(filepath, ERROR_DIR if any_error else DONE_DIR)
+        except Exception:
+            pass
+
+    total_points = sum(r.get("num_points", 0) for r in results)
+    imported = sum(1 for r in results if r["status"] == "imported")
+    logger.info(
+        f"GPX streaming import complete: {filepath.name} — "
+        f"{track_count} tracks, {imported} imported, "
+        f"{total_points} total points"
+    )
+
+    return results
+
+
 def import_single_file(filepath: Path, move_after: bool = True) -> dict | list[dict]:
     """Import a single activity file (.fit, .gpx, .tcx).
 
@@ -103,7 +189,12 @@ def import_single_file(filepath: Path, move_after: bool = True) -> dict | list[d
     try:
         fhash = file_hash(str(filepath))
 
-        # Parse the activity file — may return a list for multi-track GPX
+        # Use streaming parser for GPX files to handle large exports
+        if filepath.suffix.lower() == ".gpx":
+            results = _import_gpx_streaming(filepath, fhash, move_after)
+            return results[0] if len(results) == 1 else results
+
+        # For FIT/TCX files, use the standard parser
         parsed = parse_activity_file(filepath)
 
         # Normalize to a list of activities
@@ -112,15 +203,19 @@ def import_single_file(filepath: Path, move_after: bool = True) -> dict | list[d
         else:
             activities = [parsed]
 
+        total_points = sum(len(a["points"]) for a in activities)
+        logger.info(
+            f"Parsed {filepath.name}: "
+            f"{len(activities)} track{'s' if len(activities) != 1 else ''}, "
+            f"{total_points} points"
+        )
+
         results = []
         if len(activities) == 1:
             # Single activity — use file hash directly
             results.append(_import_one_activity(filepath, fhash, activities[0]))
         else:
             # Multi-track file — each track gets a unique hash
-            logger.info(
-                f"Multi-track file {filepath.name}: {len(activities)} tracks"
-            )
             for i, activity in enumerate(activities):
                 results.append(
                     _import_one_activity(filepath, fhash, activity,

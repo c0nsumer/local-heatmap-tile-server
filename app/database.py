@@ -54,6 +54,8 @@ def init_db():
                 file_hash TEXT UNIQUE NOT NULL,
                 imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 num_points INTEGER DEFAULT 0,
+                start_time TEXT,
+                end_time TEXT,
                 bounds_min_lat REAL,
                 bounds_min_lon REAL,
                 bounds_max_lat REAL,
@@ -74,12 +76,6 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_files_hash
                 ON files(file_hash);
 
-            CREATE INDEX IF NOT EXISTS idx_trackpoints_latlon
-                ON trackpoints(lat, lon);
-
-            CREATE INDEX IF NOT EXISTS idx_trackpoints_lat_lon_fileid
-                ON trackpoints(lat, lon, file_id);
-
             CREATE TABLE IF NOT EXISTS tile_dirty (
                 z INTEGER NOT NULL,
                 x INTEGER NOT NULL,
@@ -87,6 +83,24 @@ def init_db():
                 PRIMARY KEY (z, x, y)
             );
         """)
+
+        # R-tree spatial index for fast bounding-box lookups.
+        # Each entry maps a trackpoint id to its lat/lon as a
+        # zero-area rectangle (min=max).  The R-tree is purpose-built
+        # for "find all points in this rectangle" queries, replacing
+        # the B-tree index on (lat, lon).
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS trackpoints_rtree
+            USING rtree(
+                id,              -- matches trackpoints.id
+                min_lat, max_lat,
+                min_lon, max_lon
+            )
+        """)
+
+        # Drop old B-tree spatial indexes — R-tree replaces them
+        conn.execute("DROP INDEX IF EXISTS idx_trackpoints_latlon")
+        conn.execute("DROP INDEX IF EXISTS idx_trackpoints_lat_lon_fileid")
 
 
 def file_hash(filepath: str) -> str:
@@ -107,28 +121,50 @@ def file_already_imported(fhash: str) -> bool:
 
 
 def insert_file(filename: str, fhash: str,
-                points: list[tuple[float, float]]) -> int:
+                points: list[tuple[float, float]],
+                start_time: str | None = None,
+                end_time: str | None = None) -> int:
     """Insert a file record and its trackpoints. Returns file_id."""
     if not points:
         return -1
 
-    lats = [p[0] for p in points]
-    lons = [p[1] for p in points]
+    # Compute bounds in a single pass without creating separate lists
+    min_lat = min_lon = float("inf")
+    max_lat = max_lon = float("-inf")
+    for lat, lon in points:
+        if lat < min_lat: min_lat = lat
+        if lat > max_lat: max_lat = lat
+        if lon < min_lon: min_lon = lon
+        if lon > max_lon: max_lon = lon
 
     with get_conn() as conn:
         cur = conn.execute(
             """INSERT INTO files
-               (filename, file_hash, num_points,
+               (filename, file_hash, num_points, start_time, end_time,
                 bounds_min_lat, bounds_min_lon, bounds_max_lat, bounds_max_lon)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (filename, fhash, len(points),
-             min(lats), min(lons), max(lats), max(lons))
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (filename, fhash, len(points), start_time, end_time,
+             min_lat, min_lon, max_lat, max_lon)
         )
         file_id = cur.lastrowid
 
+        # Insert trackpoints using a generator (no intermediate list)
         conn.executemany(
             "INSERT INTO trackpoints (file_id, lat, lon) VALUES (?, ?, ?)",
-            [(file_id, lat, lon) for lat, lon in points]
+            ((file_id, lat, lon) for lat, lon in points)
+        )
+
+        # Get the range of IDs just inserted so we can populate the R-tree
+        last_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        first_id = last_id - len(points) + 1
+
+        # Bulk-insert into R-tree using a generator (no intermediate list)
+        conn.executemany(
+            """INSERT INTO trackpoints_rtree
+               (id, min_lat, max_lat, min_lon, max_lon)
+               VALUES (?, ?, ?, ?, ?)""",
+            ((first_id + i, lat, lat, lon, lon)
+             for i, (lat, lon) in enumerate(points))
         )
 
     return file_id
@@ -142,10 +178,10 @@ def get_track_segments_in_tile(z: int, x: int, y: int,
                                 ) -> list[list[tuple[float, float]]]:
     """Get track segments (ordered points per file) within a tile bbox.
 
-    For each file that has at least one point inside the tile area, this
-    fetches a window of points including the immediate neighbors outside
-    the tile so that line segments crossing tile boundaries are drawn
-    without gaps.
+    Uses an R-tree spatial index for fast bounding-box lookup, then
+    fetches a window of points per file including the immediate neighbors
+    outside the tile so that line segments crossing tile boundaries are
+    drawn without gaps.
     """
     import math
 
@@ -163,13 +199,16 @@ def get_track_segments_in_tile(z: int, x: int, y: int,
     lon_max += dlon
 
     with get_conn() as conn:
-        # Step 1: Find which files have points in the tile area, and the
-        # min/max trackpoint id for each file within that area.
+        # Step 1: Use R-tree to find trackpoint IDs in the bounding box,
+        # then join with trackpoints to get file_id and compute min/max
+        # ID ranges per file.
         hit_rows = conn.execute(
-            """SELECT file_id, MIN(id) as min_id, MAX(id) as max_id
-               FROM trackpoints
-               WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
-               GROUP BY file_id
+            """SELECT t.file_id, MIN(r.id) as min_id, MAX(r.id) as max_id
+               FROM trackpoints_rtree r
+               JOIN trackpoints t ON t.id = r.id
+               WHERE r.min_lat >= ? AND r.max_lat <= ?
+                 AND r.min_lon >= ? AND r.max_lon <= ?
+               GROUP BY t.file_id
                LIMIT ?""",
             (lat_min, lat_max, lon_min, lon_max,
              MAX_POINTS_PER_TILE)
@@ -215,11 +254,27 @@ def get_stats() -> dict:
                ) as c FROM files"""
         ).fetchone()["c"]
 
-    return {
+        # Date range from activity timestamps
+        date_row = conn.execute(
+            """SELECT MIN(start_time) as earliest,
+                      MAX(end_time) as latest
+               FROM files
+               WHERE start_time IS NOT NULL"""
+        ).fetchone()
+
+    result = {
         "total_files": total_files,
         "total_tracks": total_tracks,
         "total_points": total_points,
     }
+
+    if date_row and date_row["earliest"]:
+        result["date_range"] = {
+            "earliest": date_row["earliest"],
+            "latest": date_row["latest"],
+        }
+
+    return result
 
 
 def mark_tiles_dirty(points: list[tuple[float, float]],
