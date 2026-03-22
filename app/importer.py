@@ -120,7 +120,7 @@ def _import_gpx_streaming(filepath: Path, fhash: str,
             )
 
             logger.info(
-                f"Parsed {track['filename']}: "
+                f"Track {track_count}: {track_name} — "
                 f"{len(track['points'])} points"
             )
 

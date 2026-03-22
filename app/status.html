@@ -408,8 +408,7 @@
 
   function formatNumber(n) {
     if (n == null) return '--';
-    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-    return n.toLocaleString();
+    return String(n);
   }
 
   function formatSize(bytes) {
