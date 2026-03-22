@@ -2,7 +2,7 @@
 
 A self-hosted, Docker-based system that imports GPS activity files and generates heatmap XYZ tiles for use with [MapLibre GL JS](https://maplibre.org/projects/gl-js/), [Leaflet](https://leafletjs.com/), [JOSM](https://josm.openstreetmap.de), and many other map clients.
 
-# AI Development
+## Note about AI Development
 
 Almost the entirity of this project (but not this paragraph) was built using [Claude](https://claude.ai) to both quickly scratch an itch (this tile server is very useful for me when making maps and in moving away from SaaS fitness trackers) and to become more comfortable and familiar with AI-assisted development, with a significant amount of manual bug testing and iterating through features.
 

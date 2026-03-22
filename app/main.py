@@ -123,7 +123,7 @@ async def get_tile(style: str, z: int, x: int, y: int):
     n = 2 ** z
     if x < 0 or x >= n or y < 0 or y >= n:
         return Response(content=EMPTY_TILE, media_type="image/png",
-                        headers={"Cache-Control": "public, max-age=86400"})
+                        headers={"Cache-Control": "public, max-age=300"})
 
     # Check cache (run in dedicated I/O pool, separate from prerender)
     loop = asyncio.get_event_loop()
@@ -132,7 +132,7 @@ async def get_tile(style: str, z: int, x: int, y: int):
         return Response(
             content=cached,
             media_type="image/png",
-            headers={"Cache-Control": "public, max-age=86400",
+            headers={"Cache-Control": "public, max-age=300",
                      "X-Tile-Source": "cache"}
         )
 
@@ -146,7 +146,7 @@ async def get_tile(style: str, z: int, x: int, y: int):
         return Response(
             content=EMPTY_TILE,
             media_type="image/png",
-            headers={"Cache-Control": "public, max-age=86400"}
+            headers={"Cache-Control": "public, max-age=300"}
         )
 
     img = await loop.run_in_executor(
@@ -157,7 +157,7 @@ async def get_tile(style: str, z: int, x: int, y: int):
         return Response(
             content=EMPTY_TILE,
             media_type="image/png",
-            headers={"Cache-Control": "public, max-age=86400"}
+            headers={"Cache-Control": "public, max-age=300"}
         )
 
     # Save to cache
@@ -172,7 +172,7 @@ async def get_tile(style: str, z: int, x: int, y: int):
     return Response(
         content=tile_bytes,
         media_type="image/png",
-        headers={"Cache-Control": "public, max-age=86400",
+        headers={"Cache-Control": "public, max-age=300",
                  "X-Tile-Source": "rendered"}
     )
 

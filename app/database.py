@@ -277,9 +277,55 @@ def get_stats() -> dict:
     return result
 
 
+TILES_DIR = Path("/data/tiles")
+
+
+def _delete_cached_tiles(tiles: set[tuple[int, int, int]]):
+    """Delete cached tile PNGs for all styles so nginx won't serve stale data.
+
+    Also evicts matching entries from the renderer's in-memory cache.
+    """
+    if not TILES_DIR.exists():
+        return
+    styles = [d.name for d in TILES_DIR.iterdir() if d.is_dir()]
+    deleted = 0
+    for style in styles:
+        for z, x, y in tiles:
+            tile_path = TILES_DIR / style / str(z) / str(x) / f"{y}.png"
+            try:
+                tile_path.unlink()
+                deleted += 1
+            except FileNotFoundError:
+                pass
+
+    if deleted > 0:
+        import logging
+        logging.getLogger(__name__).info(
+            f"Deleted {deleted} stale cached tile files"
+        )
+
+    # Evict from renderer's in-memory cache (lazy import to avoid circular dep)
+    try:
+        from app.renderer import _tile_mem_cache, _tile_cache_order
+        for style in styles:
+            for z, x, y in tiles:
+                key = (style, z, x, y)
+                if key in _tile_mem_cache:
+                    _tile_mem_cache.pop(key, None)
+                    try:
+                        _tile_cache_order.remove(key)
+                    except ValueError:
+                        pass
+    except ImportError:
+        pass
+
+
 def mark_tiles_dirty(points: list[tuple[float, float]],
                      min_zoom: int = 2, max_zoom: int = 16):
-    """Mark tiles that need re-rendering after new data import."""
+    """Mark tiles that need re-rendering after new data import.
+
+    Also deletes cached tile PNGs so nginx won't serve stale versions.
+    """
     import math
 
     tiles_to_mark = set()
@@ -292,6 +338,9 @@ def mark_tiles_dirty(points: list[tuple[float, float]],
             x = max(0, min(n - 1, x))
             y = max(0, min(n - 1, y))
             tiles_to_mark.add((z, x, y))
+
+    # Delete stale cached PNGs before marking dirty
+    _delete_cached_tiles(tiles_to_mark)
 
     with get_conn() as conn:
         conn.executemany(
