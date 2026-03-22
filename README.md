@@ -6,20 +6,24 @@ A self-hosted, Docker-based system that imports GPS activity files and generates
 
 Almost the entirity of this project (but not this paragraph) was built using [Claude](https://claude.ai) to both quickly scratch an itch (this tile server is very useful for me when making maps and in moving away from SaaS fitness trackers) and to become more comfortable and familiar with AI-assisted development, with a significant amount of manual bug testing and iterating through features.
 
-## Features
+## Tile Server Features
 
-- **Multi-format import** — Supports `.fit`, `.gpx`, and `.tcx` files from Garmin, Wahoo, Karoo, and other devices. Supports GPX files which contain multiple tracks, such as those exported from [rubiTrack](https://www.rubitrack.com/) or [JOSM](https://josm.openstreetmap.de).
-- **Three heatmap styles** — Warm (orange/red), Cool (blue), and Top 10% (lime green overlay highlighting most-used routes).
-- **GPX overlay** — Drag-and-drop GPX files onto the map viewer to compare routes against the heatmap.
-- **XYZ tile endpoints** — Standard `/{style}/{z}/{x}/{y}.png` URLs compatible with any tile client.
-- **PMTiles export** — Package tiles into a single PMTiles file for static hosting or sharing.
-- **PMTiles viewer** -- Includes example viewer for static PMTiles file(s) and Caddy configuration for easily serving the files.
-- **nginx static serving** — Pre-rendered tiles served directly from disk by nginx for fast loading.
-- **JOSM compatible** — One-click "Open in JOSM" link with style selection.
-- **MapLibre GL JS viewer** — Built-in WebGL map with automatic light/dark mode, smooth fractional zoom, basemap selection, and bookmarkable URLs.
-- **Data Manager** — Live pre-render progress, file upload, and import/rebuild/export controls.
-- **Incremental updates** — Only tiles affected by new data are re-rendered.
-- **Duplicate detection** — Files are SHA256-hashed to prevent re-importing.
+- **Multi-format import**: Supports `.fit`, `.gpx`, and `.tcx` files from Garmin, Wahoo, Karoo, and other devices. Supports GPX files which contain multiple tracks, such as those exported from [rubiTrack](https://www.rubitrack.com/) or [JOSM](https://josm.openstreetmap.de).
+- **Large imports**: Capable of importing a large number of files, or tracks, at once. Tested to import 4000+ .FIT files at once, and a single .GPX (exported from rubiTrack) containing 3981 tracks.
+- **Three heatmap styles**: Warm (orange/red), Cool (blue), and Top 10% (lime green overlay highlighting most-used routes).
+- **XYZ tile endpoints**: Standard `/{style}/{z}/{x}/{y}.png` URLs compatible with any tile client.
+- **Incremental updates**: Only tiles affected by new data are re-rendered.
+- **Duplicate detection**: Files are SHA256-hashed to prevent re-importing.
+- **nginx static serving**: Pre-rendered tiles served directly from disk by nginx for fast loading.
+
+## Live Heatmap Viewer Features
+
+- **MapLibre GL JS viewer**: Built-in WebGL map with automatic light/dark mode, smooth fractional zoom, basemap selection, and bookmarkable URLs.
+- **JOSM compatible**: One-click "Open in JOSM" link with style selection.
+- **PMTiles export**: Package tiles into a single PMTiles file for static hosting or sharing.
+- **PMTiles viewer**: Includes example viewer for static PMTiles file(s) and Caddy configuration for easily serving the files.
+- **GPX overlay**: Drag-and-drop GPX files onto the map viewer to compare routes against the heatmap.
+- **Data Manager**: Live pre-render progress, file upload, and import/rebuild/export controls.
 
 ## Quick Start
 
@@ -45,8 +49,8 @@ open http://localhost:8000/manager
 
 The container runs nginx and uvicorn (FastAPI) via supervisord:
 
-- **nginx** (port 8000) — Serves pre-rendered tiles directly from disk using `sendfile()`. Falls back to uvicorn for tiles not yet rendered. Proxies all API and UI requests to uvicorn.
-- **uvicorn** (port 8001, internal) — Handles file imports, on-the-fly tile rendering, the pre-render background worker, and all API endpoints.
+- **nginx** (port 8000): Serves pre-rendered tiles directly from disk using `sendfile()`. Falls back to uvicorn for tiles not yet rendered. Proxies all API and UI requests to uvicorn.
+- **uvicorn** (port 8001, internal): Handles file imports, on-the-fly tile rendering, the pre-render background worker, and all API endpoints.
 
 ## Heatmap Styles
 
@@ -169,7 +173,7 @@ The map viewer supports loading GPX files as overlays to compare planned or reco
 - **Click** the "GPX Overlay" area to browse for files.
 - Routes are rendered as white lines with a dark outline for visibility over all heatmap styles and basemaps.
 - Multiple overlays can be loaded simultaneously; each can be individually removed.
-- Files are parsed client-side — nothing is uploaded to the server.
+- Files are parsed client-side: nothing is uploaded to the server.
 
 ## Configuration
 
@@ -204,19 +208,6 @@ Environment variables (set in `docker-compose.yml`):
   export/         PMTiles exports
 ```
 
-## PMTiles Viewer
-
-The `PMTiles Viewer/` directory contains a standalone MapLibre GL JS viewer and Caddy configuration for hosting exported PMTiles files without the tile server. Uses the native `pmtiles://` protocol for efficient tile loading. See `PMTiles Viewer/README.md` for setup instructions.
-
-## Tools
-
-The `tools/` directory contains utility scripts that run on the host:
-
-- **`reset.sh`** — Completely resets the server: stops the container, removes the image, and deletes all data
-- **`vpl-to-gpx.sh`** — Converts Honda/Acura VPLog (.vpl) GPS files to GPX using GPSBabel
-
-See `tools/README.md` for details.
-
 ## Dependencies
 
 **Server (Docker container):**
@@ -232,9 +223,24 @@ See `tools/README.md` for details.
 - [MapLibre GL JS](https://maplibre.org/projects/gl-js/) (WebGL map rendering)
 - [toGeoJSON](https://github.com/mapbox/togeojson) (client-side GPX parsing)
 
+# Additional Tools
+
+## PMTiles Viewer
+
+The `PMTiles Viewer/` directory contains a standalone MapLibre GL JS viewer and Caddy configuration for hosting exported PMTiles files without the tile server. Uses the native `pmtiles://` protocol for efficient tile loading. See `PMTiles Viewer/README.md` for setup instructions.
+
+## Tools
+
+The `tools/` directory contains utility scripts that run on the host:
+
+- **`reset.sh`**: Completely resets the server: stops the container, removes the image, and deletes all data
+- **`vpl-to-gpx.sh`**: Converts Honda/Acura VPLog (.vpl) GPS files to GPX using GPSBabel
+
+See `tools/README.md` for details.
+
 ## Author
 
-Steve Vigneau — [nuxx.net](https://nuxx.net) — <steve@nuxx.net>
+Steve Vigneau / [nuxx.net](https://nuxx.net) / <steve@nuxx.net>
 
 Built with [Claude Code](https://claude.com/claude-code) (Claude Opus 4.6, Anthropic).
 
