@@ -8,7 +8,8 @@ import logging
 from pathlib import Path
 
 from app.database import (
-    file_hash, file_already_imported, insert_file, mark_tiles_dirty
+    file_hash, file_already_imported, insert_file, mark_tiles_dirty,
+    _delete_cached_tiles
 )
 from app.parser import parse_activity_file, SUPPORTED_EXTENSIONS
 from app.gpx_parser import parse_gpx_file_streaming
@@ -40,7 +41,8 @@ def _move_file(filepath: Path, dest_dir: Path):
 
 
 def _import_one_activity(filepath: Path, fhash: str, parsed: dict,
-                         track_index: int | None = None) -> dict:
+                         track_index: int | None = None,
+                         delete_cached: bool = True) -> dict:
     """Import a single parsed activity into the database.
 
     track_index is set when the source file contained multiple tracks,
@@ -81,9 +83,10 @@ def _import_one_activity(filepath: Path, fhash: str, parsed: dict,
     )
 
     # Mark affected tiles as dirty using ALL points — no sampling.
-    mark_tiles_dirty(
+    dirty = mark_tiles_dirty(
         parsed["points"],
-        min_zoom=MIN_ZOOM, max_zoom=MAX_ZOOM
+        min_zoom=MIN_ZOOM, max_zoom=MAX_ZOOM,
+        delete_cached=delete_cached
     )
 
     result["status"] = "imported"
@@ -125,7 +128,8 @@ def _import_gpx_streaming(filepath: Path, fhash: str,
             )
 
             result = _import_one_activity(
-                filepath, fhash, track, track_index=track_index
+                filepath, fhash, track, track_index=track_index,
+                delete_cached=False
             )
             results.append(result)
 
@@ -159,6 +163,14 @@ def _import_gpx_streaming(filepath: Path, fhash: str,
             "num_points": 0,
             "error": None,
         })
+
+    # Batch-delete stale cached tiles once, rather than per-track
+    if any(r["status"] == "imported" for r in results):
+        from app.database import get_dirty_tiles, count_dirty_tiles
+        dirty_count = count_dirty_tiles()
+        if dirty_count > 0:
+            dirty_tiles = set(get_dirty_tiles(limit=dirty_count))
+            _delete_cached_tiles(dirty_tiles)
 
     if move_after:
         try:

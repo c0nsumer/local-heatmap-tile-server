@@ -321,10 +321,13 @@ def _delete_cached_tiles(tiles: set[tuple[int, int, int]]):
 
 
 def mark_tiles_dirty(points: list[tuple[float, float]],
-                     min_zoom: int = 2, max_zoom: int = 16):
+                     min_zoom: int = 2, max_zoom: int = 16,
+                     delete_cached: bool = True):
     """Mark tiles that need re-rendering after new data import.
 
-    Also deletes cached tile PNGs so nginx won't serve stale versions.
+    When delete_cached is True (default), also deletes cached tile PNGs
+    so nginx won't serve stale versions.  Set to False during bulk
+    imports and call delete_cached_tiles() once at the end instead.
     """
     import math
 
@@ -339,14 +342,16 @@ def mark_tiles_dirty(points: list[tuple[float, float]],
             y = max(0, min(n - 1, y))
             tiles_to_mark.add((z, x, y))
 
-    # Delete stale cached PNGs before marking dirty
-    _delete_cached_tiles(tiles_to_mark)
+    if delete_cached:
+        _delete_cached_tiles(tiles_to_mark)
 
     with get_conn() as conn:
         conn.executemany(
             "INSERT OR IGNORE INTO tile_dirty (z, x, y) VALUES (?, ?, ?)",
             list(tiles_to_mark)
         )
+
+    return tiles_to_mark
 
 
 def get_dirty_tiles(limit: int = 500) -> list[tuple[int, int, int]]:

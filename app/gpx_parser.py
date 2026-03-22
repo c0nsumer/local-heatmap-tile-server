@@ -22,6 +22,45 @@ def _strip_ns(tag: str) -> str:
     return tag
 
 
+def _sanitize_text_elements(xml: str) -> str:
+    """Escape stray angle brackets inside GPX free-text elements.
+
+    GPX files exported by some apps (e.g. rubiTrack) may contain
+    unescaped angle brackets in <desc> or <cmt> text — things like
+    "<angryface>" typed by the user. These are invalid XML and cause
+    parse errors.
+
+    Per the GPX spec, <desc> and <cmt> contain only plain text (no
+    child elements), so we can safely escape ALL angle brackets within
+    their content. <name> is also plain text but is left alone since
+    angle brackets in track names are far less likely and the element
+    name is very common.
+    """
+    def _escape_content(m):
+        open_tag = m.group(1)
+        content = m.group(2)
+        close_tag = m.group(3)
+        # Un-escape any existing entities first to avoid double-escaping,
+        # then re-escape everything uniformly
+        content = content.replace('&amp;', '&')
+        content = content.replace('&lt;', '<')
+        content = content.replace('&gt;', '>')
+        content = content.replace('&quot;', '"')
+        content = content.replace('&apos;', "'")
+        content = content.replace('&', '&amp;')
+        content = content.replace('<', '&lt;')
+        content = content.replace('>', '&gt;')
+        return open_tag + content + close_tag
+
+    # Match <desc>...</desc> and <cmt>...</cmt> with optional namespace
+    return re.sub(
+        r'(<(?:\w+:)?(?:desc|cmt)>)(.*?)(</(?:\w+:)?(?:desc|cmt)>)',
+        _escape_content,
+        xml,
+        flags=re.DOTALL
+    )
+
+
 def _parse_trk_block(trk_xml: str, filepath_name: str,
                       track_index: int,
                       ns_attrs: str = "") -> dict | None:
@@ -33,6 +72,9 @@ def _parse_trk_block(trk_xml: str, filepath_name: str,
 
     Returns None if the block has no valid GPS points.
     """
+    # Sanitize text elements to handle unescaped angle brackets
+    trk_xml = _sanitize_text_elements(trk_xml)
+
     # Wrap in a root element that carries the namespace declarations
     wrapped = f'<?xml version="1.0"?><root {ns_attrs}>{trk_xml}</root>'
 
