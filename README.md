@@ -8,7 +8,7 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 
 ## Tile Server Features
 
-- **Multi-format import**: Supports `.fit`, `.gpx`, and `.tcx` files from Garmin, Wahoo, Karoo, and other devices. Supports GPX files which contain multiple tracks, such as those exported from [rubiTrack](https://www.rubitrack.com/) or [JOSM](https://josm.openstreetmap.de).
+- **Multi-format import**: Supports `.fit`, `.gpx`, and `.tcx` files from Garmin, Wahoo, Karoo, and other devices. Supports GPX files which contain multiple tracks, such as those exported from [rubiTrack](https://www.rubitrack.com/).
 - **Large imports**: Capable of importing a large number of files, or tracks, at once. Tested to import 4000+ .FIT files at once, and a single .GPX (exported from rubiTrack) containing ~4000 tracks.
 - **Three heatmap styles**: Warm (orange/red), Cool (blue), and Top 10% (lime green overlay highlighting most-used routes).
 - **XYZ tile server**: Standard `/{style}/{z}/{x}/{y}.png` URLs compatible with any tile client.
@@ -131,13 +131,13 @@ Click the "Open in JOSM" link in the viewer to add the heatmap as an imagery lay
 
 1. Upload files via the Data Manager UI, or copy them into `./data/import/`.
 2. If copied to the import directory, trigger a scan via the Data Manager or: `curl -X POST http://localhost:8000/api/scan`.
-3. Files are parsed, deduplicated (see below), and stored in SQLite.
-4. Successfully imported files are moved to `./data/import/done/`.
-5. Files that fail to parse are moved to `./data/import/errors/`.
-6. Affected tiles are automatically marked dirty and queued for pre-rendering.
-7. Stale cached tiles are automatically deleted so nginx serves fresh renders.
-
-Multi-track GPX files are automatically split into individual tracks on import.
+3. Each file is parsed according to its format:
+   - **FIT/TCX**: Parsed directly, one track per file.
+   - **GPX**: Streamed through a chunked parser that extracts `<trk>` blocks one at a time, supporting multi-GB files with thousands of tracks without excessive memory use. Malformed XML within a track (e.g., unescaped angle brackets in `<desc>` or `<cmt>` fields) is sanitized automatically. If a track still fails to parse, it is skipped and the remaining tracks continue importing.
+4. Each track is checked for duplicates (see [Deduplication](#deduplication)) and stored in SQLite.
+5. Affected tiles are marked dirty, and stale cached tile files are deleted from disk so nginx serves fresh renders on the next request.
+6. Successfully imported files are moved to `./data/import/done/`. Files that fail to parse entirely are moved to `./data/import/errors/`.
+7. The background pre-render worker automatically picks up dirty tiles and begins rendering.
 
 ## Deduplication
 

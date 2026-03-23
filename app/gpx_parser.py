@@ -23,18 +23,16 @@ def _strip_ns(tag: str) -> str:
 
 
 def _sanitize_text_elements(xml: str) -> str:
-    """Escape stray angle brackets inside GPX free-text elements.
+    """Escape invalid XML characters inside GPX free-text elements.
 
     GPX files exported by some apps (e.g. rubiTrack) may contain
-    unescaped angle brackets in <desc> or <cmt> text — things like
-    "<angryface>" typed by the user. These are invalid XML and cause
-    parse errors.
+    unescaped characters in <name>, <desc>, or <cmt> text — things
+    like "<angryface>" or "R&R" typed by the user. These are invalid
+    XML and cause parse errors.
 
-    Per the GPX spec, <desc> and <cmt> contain only plain text (no
-    child elements), so we can safely escape ALL angle brackets within
-    their content. <name> is also plain text but is left alone since
-    angle brackets in track names are far less likely and the element
-    name is very common.
+    Per the GPX spec, <name>, <desc>, and <cmt> contain only plain
+    text (no child elements), so we can safely escape all angle
+    brackets and bare ampersands within their content.
     """
     def _escape_content(m):
         open_tag = m.group(1)
@@ -52,27 +50,35 @@ def _sanitize_text_elements(xml: str) -> str:
         content = content.replace('>', '&gt;')
         return open_tag + content + close_tag
 
-    # Match <desc>...</desc> and <cmt>...</cmt> with optional namespace
+    # Match <name>...</name>, <desc>...</desc>, and <cmt>...</cmt>
+    # with optional namespace prefix
     return re.sub(
-        r'(<(?:\w+:)?(?:desc|cmt)>)(.*?)(</(?:\w+:)?(?:desc|cmt)>)',
+        r'(<(?:\w+:)?(?:name|desc|cmt)>)(.*?)(</(?:\w+:)?(?:name|desc|cmt)>)',
         _escape_content,
         xml,
         flags=re.DOTALL
     )
 
 
+# Sentinel returned by _parse_trk_block when the XML is valid but has no points
+_EMPTY_TRACK = "empty"
+
+
 def _parse_trk_block(trk_xml: str, filepath_name: str,
                       track_index: int,
-                      ns_attrs: str = "") -> dict | None:
+                      ns_attrs: str = "") -> dict | str | None:
     """Parse a single <trk>...</trk> XML block into a track dict.
 
     ns_attrs contains namespace declarations extracted from the root <gpx>
     element (e.g. 'xmlns:gpxdata="..."'), so prefixed elements inside the
     track block can be resolved.
 
-    Returns None if the block has no valid GPS points.
+    Returns:
+        dict  — successfully parsed track with GPS points
+        _EMPTY_TRACK — valid XML but no GPS points
+        None  — malformed XML that could not be parsed
     """
-    # Sanitize text elements to handle unescaped angle brackets
+    # Sanitize text elements to handle unescaped characters
     trk_xml = _sanitize_text_elements(trk_xml)
 
     # Wrap in a root element that carries the namespace declarations
@@ -81,8 +87,11 @@ def _parse_trk_block(trk_xml: str, filepath_name: str,
     try:
         root = fromstring(wrapped)
     except ParseError as e:
+        # Extract track name from raw XML for the log message
+        name_match = re.search(r'<name>(.*?)</name>', trk_xml)
+        name_hint = f" ({name_match.group(1)})" if name_match else ""
         logger.warning(
-            f"Skipping malformed track #{track_index + 1} in "
+            f"Skipping malformed track #{track_index + 1}{name_hint} in "
             f"{filepath_name}: {e}"
         )
         return None
@@ -123,7 +132,7 @@ def _parse_trk_block(trk_xml: str, filepath_name: str,
                         break
 
     if not points:
-        return None
+        return _EMPTY_TRACK
 
     return {
         "points": points,
@@ -174,7 +183,8 @@ def parse_gpx_file_streaming(filepath: str | Path):
     gpx_header_lines = []
     ns_attrs = ""
     track_index = 0
-    skipped = 0
+    empty_count = 0
+    malformed_count = 0
 
     with open(filepath, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -220,10 +230,12 @@ def parse_gpx_file_streaming(filepath: str | Path):
                             trk_xml, filepath.name, track_index,
                             ns_attrs
                         )
-                        if result is not None:
-                            yield result
+                        if result is _EMPTY_TRACK:
+                            empty_count += 1
+                        elif result is None:
+                            malformed_count += 1
                         else:
-                            skipped += 1
+                            yield result
                         track_index += 1
             else:
                 # Inside a <trk> block — accumulate lines
@@ -239,10 +251,12 @@ def parse_gpx_file_streaming(filepath: str | Path):
                         trk_xml, filepath.name, track_index,
                         ns_attrs
                     )
-                    if result is not None:
-                        yield result
+                    if result is _EMPTY_TRACK:
+                        empty_count += 1
+                    elif result is None:
+                        malformed_count += 1
                     else:
-                        skipped += 1
+                        yield result
                     track_index += 1
                 else:
                     trk_lines.append(line)
@@ -258,21 +272,28 @@ def parse_gpx_file_streaming(filepath: str | Path):
         result = _parse_trk_block(
             trk_xml, filepath.name, track_index, ns_attrs
         )
-        if result is not None:
-            yield result
+        if result is _EMPTY_TRACK:
+            empty_count += 1
+        elif result is None:
+            malformed_count += 1
         else:
-            skipped += 1
+            yield result
         track_index += 1
 
-    if skipped > 0:
-        logger.warning(
-            f"{filepath.name}: skipped {skipped} tracks "
-            f"(malformed XML or no GPS data)"
+    skipped_parts = []
+    if malformed_count > 0:
+        skipped_parts.append(f"{malformed_count} malformed")
+    if empty_count > 0:
+        skipped_parts.append(f"{empty_count} with no GPS data")
+    if skipped_parts:
+        logger.info(
+            f"{filepath.name}: skipped {', '.join(skipped_parts)}"
         )
 
+    imported = track_index - malformed_count - empty_count
     logger.info(
         f"{filepath.name}: extracted {track_index} track blocks, "
-        f"{track_index - skipped} with GPS data"
+        f"{imported} with GPS data"
     )
 
 
