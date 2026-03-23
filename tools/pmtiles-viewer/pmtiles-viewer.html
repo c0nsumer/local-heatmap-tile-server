@@ -326,9 +326,24 @@
   var protocol = new pmtiles.Protocol();
   maplibregl.addProtocol('pmtiles', protocol.tile);
 
+  // --- localStorage helpers ---
+  function lsGet(key) {
+    try { return localStorage.getItem(key); } catch(e) { return null; }
+  }
+  function lsSet(key, value) {
+    try { localStorage.setItem(key, value); } catch(e) {}
+  }
+
+  // --- Load saved settings from localStorage ---
+  var savedStyle = lsGet('pmtiles-style');
+  var savedBasemap = lsGet('pmtiles-basemap');
+  var savedAppearance = lsGet('pmtiles-appearance');
+  var savedTop10 = lsGet('pmtiles-top10');
+  var savedPanelCollapsed = lsGet('pmtiles-panel-collapsed');
+
   // --- Appearance (light/dark/auto) ---
   var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
-  var appearanceMode = 'auto'; // 'auto', 'light', 'dark'
+  var appearanceMode = savedAppearance || 'auto'; // 'auto', 'light', 'dark'
 
   function isDark() {
     if (appearanceMode === 'dark') return true;
@@ -348,9 +363,25 @@
     }
   }
 
-  // Apply immediately based on OS default
-  if (darkMq.matches) {
-    document.documentElement.classList.add('dark');
+  // Apply saved appearance to select element
+  document.getElementById('appearance-select').value = appearanceMode;
+
+  // Apply immediately based on current appearance mode
+  applyAppearance();
+
+  // Apply stored panel collapsed state
+  var storedCollapsed = lsGet('pmtiles-panel-collapsed');
+  var panelEl = document.getElementById('panel');
+  if (storedCollapsed === 'false') {
+    panelEl.classList.remove('collapsed');
+  } else {
+    panelEl.classList.add('collapsed');
+  }
+
+  // Apply stored basemap selection
+  var storedBasemap = lsGet('pmtiles-basemap');
+  if (storedBasemap) {
+    document.getElementById('basemap-select').value = storedBasemap;
   }
 
   // --- Basemap helpers ---
@@ -372,10 +403,11 @@
   }
 
   // --- Parse URL hash: #z/lat/lon/style[/top10] ---
+  // Priority: hash > localStorage > hardcoded defaults
   var initCenter = [-98.5833, 39.8333];
   var initZoom = 10;
-  var initStyle = 'warm';
-  var initTop10 = false;
+  var initStyle = savedStyle || 'warm';
+  var initTop10 = savedTop10 === 'true' ? true : false;
   var hasHash = false;
   var hash = window.location.hash.replace('#', '');
   if (hash) {
@@ -446,6 +478,9 @@
     center: initCenter,
     zoom: initZoom,
     maxZoom: 20,
+    dragRotate: false,
+    pitchWithRotate: false,
+    touchPitch: false,
     attributionControl: false
   });
 
@@ -488,12 +523,15 @@
   // --- Appearance toggle ---
   document.getElementById('appearance-select').addEventListener('change', function(e) {
     appearanceMode = e.target.value;
+    lsSet('pmtiles-appearance', appearanceMode);
     applyAppearance();
   });
 
   // --- Panel collapse ---
   document.getElementById('panel-header').addEventListener('click', function() {
-    document.getElementById('panel').classList.toggle('collapsed');
+    var p = document.getElementById('panel');
+    p.classList.toggle('collapsed');
+    lsSet('pmtiles-panel-collapsed', p.classList.contains('collapsed'));
   });
 
   // --- Controls ---
@@ -501,11 +539,13 @@
   if (initTop10) top10Toggle.checked = true;
 
   document.getElementById('basemap-select').addEventListener('change', function(e) {
+    lsSet('pmtiles-basemap', e.target.value);
     map.getSource('basemap').setTiles(getBasemapTiles(e.target.value));
   });
 
   document.getElementById('style-select').addEventListener('change', function(e) {
     currentStyle = e.target.value;
+    lsSet('pmtiles-style', currentStyle);
     if (map.getLayer('heatmap')) map.removeLayer('heatmap');
     if (map.getSource('heatmap')) map.removeSource('heatmap');
     map.addSource('heatmap', {
@@ -522,6 +562,7 @@
   });
 
   top10Toggle.addEventListener('change', function() {
+    lsSet('pmtiles-top10', this.checked);
     if (this.checked) {
       if (!map.getLayer('top10')) {
         map.addLayer({

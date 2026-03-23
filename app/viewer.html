@@ -409,9 +409,17 @@
 (function() {
   var TILE_BASE = window.location.origin + '/tiles';
 
+  // --- localStorage helpers ---
+  function lsGet(key) {
+    try { return localStorage.getItem(key); } catch(e) { return null; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); } catch(e) {}
+  }
+
   // --- Appearance (light/dark/auto) ---
   var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
-  var appearanceMode = 'auto';
+  var appearanceMode = lsGet('heatmap-appearance') || 'auto';
 
   function isDark() {
     if (appearanceMode === 'dark') return true;
@@ -432,8 +440,24 @@
     }
   }
 
-  if (darkMq.matches) {
-    document.documentElement.classList.add('dark');
+  // Apply stored appearance before first paint
+  document.getElementById('appearance-select').value = appearanceMode;
+  applyAppearance();
+
+  // Apply stored panel collapsed state
+  var storedCollapsed = lsGet('heatmap-panel-collapsed');
+  var panelEl = document.getElementById('panel');
+  if (storedCollapsed === 'false') {
+    panelEl.classList.remove('collapsed');
+  } else {
+    // default is collapsed (matches the HTML class)
+    panelEl.classList.add('collapsed');
+  }
+
+  // Apply stored basemap selection
+  var storedBasemap = lsGet('heatmap-basemap');
+  if (storedBasemap) {
+    document.getElementById('basemap-select').value = storedBasemap;
   }
 
   // --- Basemap helpers ---
@@ -455,11 +479,14 @@
   }
 
   // --- Parse URL hash: #z/lat/lon/style[/top10] ---
+  // Priority: hash > localStorage > hardcoded defaults
   var initCenter = [-98.5833, 39.8333];
   var initZoom = 4;
-  var initStyle = 'warm';
-  var initTop10 = false;
+  var initStyle = lsGet('heatmap-style') || 'warm';
+  var initTop10 = lsGet('heatmap-top10') === 'true';
   var hasHashView = false;
+  var hashHasStyle = false;
+  var hashHasTop10 = false;
   var hash = window.location.hash.replace('#', '');
   if (hash) {
     var parts = hash.split('/');
@@ -475,14 +502,21 @@
     }
     if (parts.length >= 4 && (parts[3] === 'warm' || parts[3] === 'cool')) {
       initStyle = parts[3];
+      hashHasStyle = true;
     }
     if (parts.length >= 5 && parts[4] === 'top10') {
       initTop10 = true;
+      hashHasTop10 = true;
+    } else if (parts.length >= 5) {
+      // Hash is present with 5+ parts but no top10 segment — hash explicitly says no top10
+      hashHasTop10 = true;
+      initTop10 = false;
     }
   }
 
   var currentStyle = initStyle;
   document.getElementById('style-select').value = currentStyle;
+  document.getElementById('top10-toggle').checked = initTop10;
 
   // --- Fetch stats before building map so we can set initial bounds ---
   function initMap(statsData) {
@@ -549,6 +583,9 @@
     center: initCenter,
     zoom: initZoom,
     maxZoom: 20,
+    dragRotate: false,
+    pitchWithRotate: false,
+    touchPitch: false,
     attributionControl: false
   });
 

@@ -158,10 +158,23 @@
   // ---- CONFIGURATION ----
   var PMTILES_URL = './warm.pmtiles';
 
-  // ---- Appearance (follows OS) ----
-  var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+  // --- localStorage helpers ---
+  function lsGet(key) {
+    try { return localStorage.getItem(key); } catch(e) { return null; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); } catch(e) {}
+  }
 
-  function isDark() { return darkMq.matches; }
+  // ---- Appearance ----
+  var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+  var appearanceMode = lsGet('pmtiles-simple-appearance') || 'auto';
+
+  function isDark() {
+    if (appearanceMode === 'dark') return true;
+    if (appearanceMode === 'light') return false;
+    return darkMq.matches;
+  }
 
   function applyAppearance() {
     if (isDark()) {
@@ -174,13 +187,23 @@
     }
   }
 
-  // Apply immediately based on OS default
-  if (darkMq.matches) {
-    document.documentElement.classList.add('dark');
+  // Apply stored basemap selection
+  var storedBasemap = lsGet('pmtiles-simple-basemap');
+  if (storedBasemap) {
+    document.getElementById('basemap-select').value = storedBasemap;
   }
 
-  try { darkMq.addEventListener('change', applyAppearance); }
-  catch(e) { darkMq.addListener(applyAppearance); }
+  applyAppearance();
+
+  try {
+    darkMq.addEventListener('change', function() {
+      if (appearanceMode === 'auto') applyAppearance();
+    });
+  } catch(e) {
+    darkMq.addListener(function() {
+      if (appearanceMode === 'auto') applyAppearance();
+    });
+  }
 
   // ---- Register PMTiles protocol ----
   var protocol = new pmtiles.Protocol();
@@ -223,6 +246,9 @@
 
   var map = new maplibregl.Map({
     container: 'map',
+    dragRotate: false,
+    pitchWithRotate: false,
+    touchPitch: false,
     style: {
       version: 8,
       sources: {
@@ -279,6 +305,7 @@
 
   // Basemap switching
   document.getElementById('basemap-select').addEventListener('change', function(e) {
+    lsSet('pmtiles-simple-basemap', e.target.value);
     map.getSource('basemap').setTiles(getBasemapTiles(e.target.value));
   });
 
