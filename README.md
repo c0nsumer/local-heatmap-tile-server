@@ -4,7 +4,9 @@ A self-hosted, Docker-based system that imports GPS activity files and generates
 
 ## Note about AI Development
 
-Almost the entirity of this project (but not this paragraph) was built using [Claude](https://claude.ai) to both quickly scratch an itch and to become more comfortable and familiar with AI-assisted development, with a significant amount of manual bug testing and iterating through features. This tile server is something I've wanted for a while
+Almost the entirity of this project was built using [Claude](https://claude.ai) to both quickly scratch an itch and to become more comfortable and familiar with AI-assisted development, with a significant amount of manual bug testing and iterating through features. This tile server is something I've wanted for a while and this was a great way to learn more about this path of software development.
+
+The code was almost entirely written by Claude, while I heavily edited the `README.md` files and other documentation for readability and voice.
 
 ## Tile Server Features
 
@@ -15,7 +17,7 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 - **PMTiles export**: Package tiles into a single PMTiles file for static hosting or sharing. (See [PMTiles Viewer](#additional-tools) for a useful stand-alone viewer.)
 - **Incremental updates**: Only tiles affected by new data are re-rendered.
 - **Duplicate detection**: Two-layer deduplication prevents re-importing the same data (see [Deduplication](#deduplication)).
-- **nginx static serving**: Pre-rendered tiles served directly from disk by nginx for fast loading.
+- **nginx static tile serving**: Pre-rendered tiles served directly from disk by nginx for fast loading.
 
 ## Live Heatmap Viewer Features
 
@@ -71,11 +73,11 @@ open http://localhost:8000/manager
 
 ## Heatmap Styles
 
-| Style | Description | Usage |
+| Style | Appearance | Typical Usage |
 |-------|-------------|-------|
-| **Warm** | Orange/red gradient | Base heatmap (default) |
-| **Cool** | Blue gradient | Alternative base heatmap |
-| **Top 10%** | Lime green, transparent overlay | Toggle on top of warm or cool to highlight most-ridden routes |
+| **Warm** | Orange/red gradient | Default heatmap |
+| **Cool** | Blue gradient | Alternate heatmap |
+| **Top 10%** | Lime green | Toggle on top of warm or cool to highlight most-ridden routes in viewer |
 
 The Top 10% layer only shows pixels where track overlap intensity exceeds the 90th percentile. Everything below is fully transparent, so it works as an overlay on either base style.
 
@@ -85,72 +87,25 @@ The Top 10% layer only shows pixels where track overlap intensity exceeds the 90
 |-------|-----|
 | Warm (orange/red) | `http://localhost:8000/tiles/warm/{z}/{x}/{y}.png` |
 | Cool (blue) | `http://localhost:8000/tiles/cool/{z}/{x}/{y}.png` |
-| Top 10% (overlay) | `http://localhost:8000/tiles/top10/{z}/{x}/{y}.png` |
+| Top 10% (lme green) | `http://localhost:8000/tiles/top10/{z}/{x}/{y}.png` |
 
 Tiles are rendered at zoom levels 2–18. The viewer smoothly upscales z18 tiles for zoom levels 19–20.
 
 ## Using Tiles in Editors
 
-The viewer's "Use in Editor" menu can open the heatmap as a background imagery layer in either JOSM or iD (the currently selected style is used).
+The viewer's *Use in Editor* menu can open the heatmap as a background imagery layer in either JOSM or iD (the currently selected style is used), or copy the current heatmap (without 10% overlay) URL for use in other applications.
 
 ### JOSM
 
-Requires JOSM to be running with remote control enabled (enabled by default). The viewer sends the imagery URL to JOSM automatically. To add manually:
+Requires JOSM to be running with [remote control](https://wiki.openstreetmap.org/wiki/JOSM/RemoteControl) enabled. The viewer sends the imagery URL to JOSM automatically.
 
-- Imagery → Custom Imagery
-- URL: `tms:http://localhost:8000/tiles/warm/{z}/{x}/{y}.png`
-- Name: `Local Heatmap`
-- Min zoom: 2, Max zoom: 18
-
-### iD
+### iD (openstreetmap.org)
 
 Opens the OpenStreetMap iD editor in a new tab with the heatmap as a custom background layer. The tile server includes CORS headers so iD can load tiles from `localhost`.
 
-## API Endpoints
+### Copy TMS URL…
 
-### Tile Serving
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/tiles/{style}/{z}/{x}/{y}.png` | Serve a heatmap tile (`style`: `warm`, `cool`, or `top10`) |
-
-### Import
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/scan` | Scan the import directory for new activity files and import them |
-| `POST` | `/api/import` | Upload activity files (.fit, .gpx, .tcx) via multipart form |
-
-### Statistics & Management
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/stats` | File/track counts, GPS point totals, data bounds |
-| `POST` | `/api/rebuild` | Clear all tile caches and queue everything for re-rendering |
-| `POST` | `/api/rebuild/{style}` | Clear cache for a specific style and queue for re-rendering |
-
-### Pre-render Worker
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/prerender/status` | Worker state, batch progress, tiles remaining |
-| `POST` | `/api/prerender/pause` | Pause background pre-rendering |
-| `POST` | `/api/prerender/resume` | Resume background pre-rendering |
-
-### PMTiles Export
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/export/pmtiles?style=warm` | Export tiles as a PMTiles archive (default: warm) |
-| `GET` | `/export/{filename}` | Download an exported PMTiles file |
-
-### Web UI
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | MapLibre GL JS map viewer with GPX overlay support |
-| `GET` | `/manager` | Data Manager with upload, import, rebuild, and export controls |
-
+Copies the current tile URL, warm or cool, to the clipboard.
 
 ## GPX Sanitization
 
@@ -257,6 +212,51 @@ Environment variables (set in `docker-compose.yml`):
     top10/        Top 10% overlay tiles (lime green)
   export/         PMTiles exports
 ```
+
+## API Endpoints
+
+### Tile Serving
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/tiles/{style}/{z}/{x}/{y}.png` | Serve a heatmap tile (`style`: `warm`, `cool`, or `top10`) |
+
+### Import
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/scan` | Scan the import directory for new activity files and import them |
+| `POST` | `/api/import` | Upload activity files (.fit, .gpx, .tcx) via multipart form |
+
+### Statistics & Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/stats` | File/track counts, GPS point totals, data bounds |
+| `POST` | `/api/rebuild` | Clear all tile caches and queue everything for re-rendering |
+| `POST` | `/api/rebuild/{style}` | Clear cache for a specific style and queue for re-rendering |
+
+### Pre-render Worker
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/prerender/status` | Worker state, batch progress, tiles remaining |
+| `POST` | `/api/prerender/pause` | Pause background pre-rendering |
+| `POST` | `/api/prerender/resume` | Resume background pre-rendering |
+
+### PMTiles Export
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/export/pmtiles?style=warm` | Export tiles as a PMTiles archive (default: warm) |
+| `GET` | `/export/{filename}` | Download an exported PMTiles file |
+
+### Web UI
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/` | MapLibre GL JS map viewer with GPX overlay support |
+| `GET` | `/manager` | Data Manager with upload, import, rebuild, and export controls |
 
 ## Dependencies
 
