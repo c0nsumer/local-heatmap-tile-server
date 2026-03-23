@@ -4,7 +4,7 @@ A self-hosted, Docker-based system that imports GPS activity files and generates
 
 ## Note about AI Development
 
-Almost the entirity of this project was built using [Claude](https://claude.ai) to both quickly scratch an itch and to become more comfortable and familiar with AI-assisted development, with a significant amount of manual bug testing and iterating through features. This tile server is something I've wanted for a while and this was a great way to learn more about this path of software development.
+Almost the entirity of this project was built using [Claude](https://claude.ai) to both quickly scratch an itch and to become more comfortable and familiar with AI-assisted development, with a significant amount of manual bug testing and iterating through features. This tile server is something I've wanted for a while and this was a great way to learn more about this type of software development.
 
 The code was almost entirely written by Claude, while I heavily edited the `README.md` files and other documentation for readability and voice.
 
