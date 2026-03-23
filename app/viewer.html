@@ -419,6 +419,8 @@
     return darkMq.matches;
   }
 
+  var map = null;
+
   function applyAppearance() {
     if (isDark()) {
       document.documentElement.classList.add('dark');
@@ -541,7 +543,7 @@
     });
   }
 
-  var map = new maplibregl.Map({
+  map = new maplibregl.Map({
     container: 'map',
     style: mapStyle,
     center: initCenter,
