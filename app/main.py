@@ -181,31 +181,37 @@ async def get_tile(style: str, z: int, x: int, y: int):
 @app.post("/api/import")
 async def upload_activity_files(files: list[UploadFile] = File(...)):
     """Upload and import activity files (FIT, GPX, TCX) via API."""
+    from app.prerender import set_prerender_enabled
     results = []
     import_dir = Path("/data/import")
     import_dir.mkdir(parents=True, exist_ok=True)
 
-    for upload in files:
-        if Path(upload.filename).suffix.lower() not in SUPPORTED_EXTENSIONS:
-            results.append({
-                "filename": upload.filename,
-                "status": "skipped",
-                "error": "Unsupported format. Accepted: .fit, .gpx, .tcx"
-            })
-            continue
+    # Pause pre-renderer during upload import
+    set_prerender_enabled(False)
+    try:
+        for upload in files:
+            if Path(upload.filename).suffix.lower() not in SUPPORTED_EXTENSIONS:
+                results.append({
+                    "filename": upload.filename,
+                    "status": "skipped",
+                    "error": "Unsupported format. Accepted: .fit, .gpx, .tcx"
+                })
+                continue
 
-        # Save uploaded file
-        dest = import_dir / upload.filename
-        content = await upload.read()
-        dest.write_bytes(content)
+            # Save uploaded file
+            dest = import_dir / upload.filename
+            content = await upload.read()
+            dest.write_bytes(content)
 
-        # Import it (may return a list for multi-track GPX files)
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, import_single_file, dest)
-        if isinstance(result, list):
-            results.extend(result)
-        else:
-            results.append(result)
+            # Import it (may return a list for multi-track GPX files)
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, import_single_file, dest)
+            if isinstance(result, list):
+                results.extend(result)
+            else:
+                results.append(result)
+    finally:
+        set_prerender_enabled(True)
 
     return JSONResponse({"results": results})
 

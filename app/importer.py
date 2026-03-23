@@ -14,6 +14,7 @@ from app.database import (
 )
 from app.parser import parse_activity_file, SUPPORTED_EXTENSIONS
 from app.gpx_parser import parse_gpx_file_streaming
+from app.prerender import set_prerender_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -278,21 +279,41 @@ def _flatten_results(result) -> list[dict]:
 def scan_import_directory() -> list[dict]:
     """Scan the import directory for new activity files and import them.
 
+    Pauses the pre-renderer during import to avoid wasted work (tiles
+    rendered mid-import may be dirtied again by subsequent tracks).
+    The pre-renderer resumes automatically when the import finishes.
+
     Skips the done/ and errors/ subdirectories.
     """
     IMPORT_DIR.mkdir(parents=True, exist_ok=True)
     DONE_DIR.mkdir(parents=True, exist_ok=True)
     ERROR_DIR.mkdir(parents=True, exist_ok=True)
     skip_dirs = {DONE_DIR, ERROR_DIR}
-    results = []
 
-    for path in sorted(IMPORT_DIR.rglob("*")):
-        # Skip files inside done/ or errors/
-        if any(path.is_relative_to(sd) for sd in skip_dirs):
-            continue
-        if path.suffix.lower() in SUPPORTED_EXTENSIONS and path.is_file():
+    # Collect files to import first
+    files_to_import = sorted(
+        p for p in IMPORT_DIR.rglob("*")
+        if p.suffix.lower() in SUPPORTED_EXTENSIONS
+        and p.is_file()
+        and not any(p.is_relative_to(sd) for sd in skip_dirs)
+    )
+
+    if not files_to_import:
+        return []
+
+    # Pause pre-renderer during import
+    set_prerender_enabled(False)
+    logger.info("Paused pre-renderer for import")
+
+    results = []
+    try:
+        for path in files_to_import:
             result = import_single_file(path)
             results.extend(_flatten_results(result))
+    finally:
+        # Always resume pre-renderer, even if import fails
+        set_prerender_enabled(True)
+        logger.info("Resumed pre-renderer after import")
 
     imported_count = sum(1 for r in results if r["status"] == "imported")
     if imported_count > 0:
