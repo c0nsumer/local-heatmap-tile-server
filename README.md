@@ -9,11 +9,11 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 ## Tile Server Features
 
 - **Multi-format import**: Supports `.fit`, `.gpx`, and `.tcx` files from Garmin, Wahoo, Karoo, and other devices. Supports GPX files which contain multiple tracks, such as those exported from [rubiTrack](https://www.rubitrack.com/) or [JOSM](https://josm.openstreetmap.de).
-- **Large imports**: Capable of importing a large number of files, or tracks, at once. Tested to import 4000+ .FIT files at once, and a single .GPX (exported from rubiTrack) containing 3981 tracks.
+- **Large imports**: Capable of importing a large number of files, or tracks, at once. Tested to import 4000+ .FIT files at once, and a single .GPX (exported from rubiTrack) containing ~4000 tracks.
 - **Three heatmap styles**: Warm (orange/red), Cool (blue), and Top 10% (lime green overlay highlighting most-used routes).
-- **XYZ tile endpoints**: Standard `/{style}/{z}/{x}/{y}.png` URLs compatible with any tile client.
+- **XYZ tile server**: Standard `/{style}/{z}/{x}/{y}.png` URLs compatible with any tile client.
 - **Incremental updates**: Only tiles affected by new data are re-rendered.
-- **Duplicate detection**: Files are SHA256-hashed to prevent re-importing.
+- **Duplicate detection**: Two-layer deduplication prevents re-importing the same data (see [Deduplication](#deduplication)).
 - **nginx static serving**: Pre-rendered tiles served directly from disk by nginx for fast loading.
 
 ## Live Heatmap Viewer Features
@@ -24,7 +24,7 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 - **GPX overlay**: Drag-and-drop GPX files onto the map viewer to compare routes against the heatmap.
 - **Data Manager**: Live pre-render progress, file upload, and import/rebuild/export controls.
 
-## Quick Start
+## Quick Start / Example
 
 ```bash
 # Start with docker compose
@@ -33,6 +33,7 @@ docker compose up -d --build
 # Copy activity files into the import directory
 cp ~/garmin-exports/*.fit ./data/import/
 cp ~/wahoo-exports/*.gpx ./data/import/
+cp ~/rubiTrack-exports/export.gpx ./data/import/
 
 # Trigger an import (or use the Data Manager UI)
 curl -X POST http://localhost:8000/api/scan
@@ -130,12 +131,29 @@ Click the "Open in JOSM" link in the viewer to add the heatmap as an imagery lay
 
 1. Upload files via the Data Manager UI, or copy them into `./data/import/`.
 2. If copied to the import directory, trigger a scan via the Data Manager or: `curl -X POST http://localhost:8000/api/scan`.
-3. Files are parsed, deduplicated by SHA256 hash, and stored in SQLite.
+3. Files are parsed, deduplicated (see below), and stored in SQLite.
 4. Successfully imported files are moved to `./data/import/done/`.
 5. Files that fail to parse are moved to `./data/import/errors/`.
 6. Affected tiles are automatically marked dirty and queued for pre-rendering.
+7. Stale cached tiles are automatically deleted so nginx serves fresh renders.
 
 Multi-track GPX files are automatically split into individual tracks on import.
+
+## Deduplication
+
+Import deduplication uses two layers, checked in order:
+
+1. **File hash**: The SHA256 hash of the source file is checked first. This catches re-importing the exact same file. For multi-track GPX files, each track gets a unique hash derived from the file hash and track index.
+
+2. **Content hash**: The GPS points themselves are hashed (SHA256 of all coordinates normalized to 6 decimal places, ~0.11m resolution). This catches the same track appearing in different files — for example, a standalone `ride.gpx` and the same ride inside an aggregate `all_activities.gpx` export from an app like rubiTrack.
+
+Content-based deduplication is conservative by design. Two tracks must have exactly the same number of points, in the same order, at the same coordinates (within 0.11m) to be considered duplicates. GPS jitter alone makes it essentially impossible for two genuinely different activities to produce the same content hash, even when riding the same route on different days. Every failure mode errs on the side of importing — no unique data is ever lost.
+
+Blocked duplicates are counted in the Data Manager's Data Summary card. Individual skips are logged with the matched track name:
+
+```
+Skipping content-duplicate: export [Morning Ride].gpx matches existing track morning_ride.gpx
+```
 
 ## Pre-rendering
 

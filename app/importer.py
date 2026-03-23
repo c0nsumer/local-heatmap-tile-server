@@ -9,7 +9,8 @@ from pathlib import Path
 
 from app.database import (
     file_hash, file_already_imported, insert_file, mark_tiles_dirty,
-    _delete_cached_tiles
+    _delete_cached_tiles, compute_content_hash, content_hash_exists,
+    increment_counter
 )
 from app.parser import parse_activity_file, SUPPORTED_EXTENSIONS
 from app.gpx_parser import parse_gpx_file_streaming
@@ -73,6 +74,18 @@ def _import_one_activity(filepath: Path, fhash: str, parsed: dict,
         result["status"] = "no_gps_data"
         return result
 
+    # Content-based deduplication: hash the GPS points themselves
+    content_hash = compute_content_hash(parsed["points"])
+    is_dup, existing_name = content_hash_exists(content_hash)
+    if is_dup:
+        result["status"] = "content_duplicate"
+        increment_counter("content_duplicates_blocked")
+        logger.info(
+            f"Skipping content-duplicate: {parsed['filename']} "
+            f"matches existing track {existing_name}"
+        )
+        return result
+
     # Store in database
     insert_file(
         filename=parsed["filename"],
@@ -80,6 +93,7 @@ def _import_one_activity(filepath: Path, fhash: str, parsed: dict,
         points=parsed["points"],
         start_time=parsed.get("start_time"),
         end_time=parsed.get("end_time"),
+        content_hash=content_hash,
     )
 
     # Mark affected tiles as dirty using ALL points — no sampling.

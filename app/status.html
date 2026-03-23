@@ -333,6 +333,10 @@
       <span class="stat-label">Data bounds (NE)</span>
       <span class="stat-value" id="bounds-ne">--</span>
     </div>
+    <div class="stat-row">
+      <span class="stat-label">Duplicates blocked</span>
+      <span class="stat-value" id="dupes-blocked">--</span>
+    </div>
 
   </div>
 
@@ -523,10 +527,12 @@
       const d = await res.json();
       const imported = d.results.filter(r => r.status === 'imported').length;
       const dupes = d.results.filter(r => r.status === 'duplicate').length;
+      const contentDupes = d.results.filter(r => r.status === 'content_duplicate').length;
       const errors = d.results.filter(r => r.status === 'error').length;
       const parts = [];
       if (imported > 0) parts.push(imported + ' imported');
       if (dupes > 0) parts.push(dupes + ' duplicate');
+      if (contentDupes > 0) parts.push(contentDupes + ' content-duplicate');
       if (errors > 0) parts.push(errors + ' failed');
       showMsg('upload-msg',
         'Uploaded ' + d.results.length + ' files: ' + parts.join(', ') + '.',
@@ -604,6 +610,9 @@
         document.getElementById('stat-version').textContent = 'v' + d.version;
       }
 
+      document.getElementById('dupes-blocked').textContent =
+        d.duplicates_blocked != null ? String(d.duplicates_blocked) : '0';
+
     } catch (e) {
       console.error('Failed to fetch stats', e);
     }
@@ -633,8 +642,13 @@
     try {
       const res = await fetch('/api/scan', { method: 'POST' });
       const d = await res.json();
-      showMsg('import-msg',
-        'Imported ' + d.imported + ' of ' + d.total_scanned + ' files scanned.',
+      var scanParts = [];
+      if (d.imported > 0) scanParts.push(d.imported + ' imported');
+      if (d.content_duplicates > 0) scanParts.push(d.content_duplicates + ' content-duplicate');
+      if (d.duplicates > 0) scanParts.push(d.duplicates + ' duplicate');
+      var scanSummary = d.total_scanned + ' tracks scanned: ' +
+        (scanParts.length > 0 ? scanParts.join(', ') : 'nothing new') + '.';
+      showMsg('import-msg', scanSummary,
         d.imported > 0 ? 'var(--accent-green)' : 'var(--text-dim)');
       await Promise.all([refreshPrerender(), refreshStats()]);
     } catch (e) {

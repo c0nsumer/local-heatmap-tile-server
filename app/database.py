@@ -102,6 +102,28 @@ def init_db():
         conn.execute("DROP INDEX IF EXISTS idx_trackpoints_latlon")
         conn.execute("DROP INDEX IF EXISTS idx_trackpoints_lat_lon_fileid")
 
+        # Persistent counters for stats display
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS counters (
+                key TEXT PRIMARY KEY,
+                value INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute(
+            "INSERT OR IGNORE INTO counters (key, value) "
+            "VALUES ('content_duplicates_blocked', 0)"
+        )
+
+        # Content-based dedup: add content_hash column if it doesn't exist
+        try:
+            conn.execute("ALTER TABLE files ADD COLUMN content_hash TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_content_hash "
+            "ON files(content_hash)"
+        )
+
 
 def file_hash(filepath: str) -> str:
     """Compute SHA256 hash of a file."""
@@ -120,10 +142,61 @@ def file_already_imported(fhash: str) -> bool:
         return row is not None
 
 
+def compute_content_hash(points: list[tuple[float, float]]) -> str:
+    """Compute a SHA256 hash of GPS points normalized to 6 decimal places.
+
+    This provides content-based deduplication: the same track exported
+    from the same app in two different files (standalone vs aggregate)
+    will produce the same content hash regardless of file-level differences.
+
+    6 decimal places (~0.11m) normalizes precision differences between
+    formats (FIT semicircle conversion ~15dp, GPX typically 6-8dp).
+    """
+    h = hashlib.sha256()
+    for lat, lon in points:
+        h.update(f"{lat:.6f},{lon:.6f}\n".encode())
+    return h.hexdigest()
+
+
+def content_hash_exists(content_hash: str) -> tuple[bool, str | None]:
+    """Check if a content hash already exists in the database.
+
+    Returns (True, existing_filename) if found, (False, None) otherwise.
+    """
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT filename FROM files WHERE content_hash = ? LIMIT 1",
+            (content_hash,)
+        ).fetchone()
+        if row:
+            return True, row["filename"]
+        return False, None
+
+
+def increment_counter(key: str, amount: int = 1):
+    """Increment a persistent counter."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE counters SET value = value + ? WHERE key = ?",
+            (amount, key)
+        )
+
+
+def get_counter(key: str) -> int:
+    """Get a persistent counter value."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT value FROM counters WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else 0
+
+
+
 def insert_file(filename: str, fhash: str,
                 points: list[tuple[float, float]],
                 start_time: str | None = None,
-                end_time: str | None = None) -> int:
+                end_time: str | None = None,
+                content_hash: str | None = None) -> int:
     """Insert a file record and its trackpoints. Returns file_id."""
     if not points:
         return -1
@@ -141,10 +214,11 @@ def insert_file(filename: str, fhash: str,
         cur = conn.execute(
             """INSERT INTO files
                (filename, file_hash, num_points, start_time, end_time,
-                bounds_min_lat, bounds_min_lon, bounds_max_lat, bounds_max_lon)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                bounds_min_lat, bounds_min_lon, bounds_max_lat, bounds_max_lon,
+                content_hash)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (filename, fhash, len(points), start_time, end_time,
-             min_lat, min_lon, max_lat, max_lon)
+             min_lat, min_lon, max_lat, max_lon, content_hash)
         )
         file_id = cur.lastrowid
 

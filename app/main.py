@@ -16,7 +16,8 @@ from PIL import Image
 
 from app.database import (
     init_db, get_track_segments_in_tile, get_stats,
-    mark_all_tiles_dirty, count_dirty_tiles
+    mark_all_tiles_dirty, count_dirty_tiles,
+    get_counter
 )
 from app.renderer import (
     render_tile, load_cached_tile, save_tile, clear_tile_cache, TILE_SIZE,
@@ -215,10 +216,14 @@ async def scan_and_import():
     loop = asyncio.get_event_loop()
     results = await loop.run_in_executor(None, scan_import_directory)
     imported = [r for r in results if r["status"] == "imported"]
+    content_dupes = [r for r in results if r["status"] == "content_duplicate"]
+    dupes = [r for r in results if r["status"] == "duplicate"]
     return JSONResponse({
         "status": "ok",
         "total_scanned": len(results),
         "imported": len(imported),
+        "duplicates": len(dupes),
+        "content_duplicates": len(content_dupes),
         "results": results,
     })
 
@@ -252,6 +257,9 @@ async def api_stats():
     bounds = await loop.run_in_executor(None, _get_bounds)
     stats["bounds"] = bounds
     stats["version"] = VERSION
+    stats["duplicates_blocked"] = await loop.run_in_executor(
+        None, get_counter, "content_duplicates_blocked"
+    )
     return JSONResponse(stats)
 
 
@@ -301,6 +309,8 @@ async def prerender_resume():
     """Resume the pre-render worker."""
     set_prerender_enabled(True)
     return JSONResponse({"status": "ok", "state": "resumed"})
+
+
 
 
 @app.post("/api/export/pmtiles")
