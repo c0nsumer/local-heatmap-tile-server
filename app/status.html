@@ -413,6 +413,10 @@
 
   let sessionStart = null;
   let sessionStartTime = null;
+  let lastRenderedCount = null;
+  let lastPollTime = null;
+  let rateSamples = [];       // rolling window of recent tiles/sec rates
+  const RATE_WINDOW = 10;     // number of samples to average over
   let pendingFiles = [];
 
   function formatNumber(n) {
@@ -595,12 +599,30 @@
         document.getElementById('pr-progress').style.width = pct.toFixed(1) + '%';
         progressWrap.style.display = '';
 
-        // ETA calculation based on observed rate
-        const elapsed = (Date.now() - sessionStartTime) / 1000;
-        if (done > 0 && elapsed > 2) {
-          const rate = done / elapsed;
-          const secsLeft = d.remaining / rate;
-          etaEl.textContent = formatDuration(secsLeft);
+        // ETA calculation based on rolling rate (adapts to speed changes)
+        const now = Date.now();
+        if (lastRenderedCount !== null && lastPollTime !== null) {
+          const dtSec = (now - lastPollTime) / 1000;
+          const dtTiles = d.rendered_total - lastRenderedCount;
+          if (dtSec > 0 && dtTiles >= 0) {
+            const sample = dtTiles / dtSec;
+            rateSamples.push(sample);
+            if (rateSamples.length > RATE_WINDOW) {
+              rateSamples.shift();
+            }
+          }
+        }
+        lastRenderedCount = d.rendered_total;
+        lastPollTime = now;
+
+        if (rateSamples.length >= 2) {
+          const avgRate = rateSamples.reduce((a, b) => a + b, 0) / rateSamples.length;
+          if (avgRate > 0.01) {
+            const secsLeft = d.remaining / avgRate;
+            etaEl.textContent = formatDuration(secsLeft);
+          } else {
+            etaEl.textContent = 'calculating\u2026';
+          }
           etaRow.style.display = '';
         } else {
           etaEl.textContent = 'calculating\u2026';
@@ -609,6 +631,9 @@
       } else {
         sessionStart = null;
         sessionStartTime = null;
+        lastRenderedCount = null;
+        lastPollTime = null;
+        rateSamples = [];
         progressWrap.style.display = 'none';
         etaRow.style.display = 'none';
       }
