@@ -14,7 +14,7 @@ curl -X POST http://localhost:8000/api/export/pmtiles?style=cool
 curl -X POST http://localhost:8000/api/export/pmtiles?style=top10
 ```
 
-Or use the "Export PMTiles" button in the Data Manager at `http://localhost:8000/manager`.
+Or use the "Export PMTiles" button in the Dashboard at `http://localhost:8000/dashboard`.
 
 ### 2. Prepare the hosting directory
 

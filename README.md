@@ -24,7 +24,7 @@ The code was almost entirely written by Claude, while I heavily edited the `READ
 - **MapLibre GL JS viewer**: Built-in WebGL map with automatic light/dark mode, smooth fractional zoom, basemap selection, and bookmarkable URLs.
 - **Editor integration**: *Use in Editor* menu to open the heatmap as a background layer in [JOSM](https:josm.openstreetmap.de) or [iD](https://www.openstreetmap.org/edit?editor=id), or copy the TMS URL.
 - **GPX overlay**: Drag-and-drop GPX files onto the map viewer to compare routes against the heatmap. (See [GPX Overlay](#gpx-overlay).)
-- **Data Manager**: Live pre-render progress, file upload, and import/rebuild/export controls.
+- **Dashboard**: Live pre-render progress, file upload, and import/rebuild/export controls.
 - **Light and dark modes**: Follows OS appearance mode, or manually controllable.
 - **Basemap picker**: Auto (follows appearance mode), Dark, Light, or OpenStreetMap.
 
@@ -47,8 +47,8 @@ Files for this demo can be browsed at: https://trailmaps.app/pmtiles-viewer/demo
 
 ## Import / Tile Rendering Workflow
 
-1. Upload files via the Data Manager UI, or copy them into `./data/import/`.
-2. If copied to the import directory, trigger a scan via the Data Manager or: `curl -X POST http://localhost:8000/api/scan`.
+1. Upload files via the Dashboard UI, or copy them into `./data/import/`.
+2. If copied to the import directory, trigger a scan via the Dashboard or: `curl -X POST http://localhost:8000/api/scan`.
 3. Each file is parsed according to its format:
    - **FIT/TCX**: Parsed directly, one track per file.
    - **GPX**: Streamed through a chunked parser that extracts `<trk>` blocks one at a time, supporting multi-GB files with thousands of tracks without excessive memory use. Malformed XML is automatically sanitized (see [GPX Sanitization](#gpx-sanitization)). If a track still fails to parse, it is skipped with a warning and the remaining tracks continue importing.
@@ -68,7 +68,7 @@ cp ~/garmin-exports/*.fit ./data/import/
 cp ~/wahoo-exports/*.gpx ./data/import/
 cp ~/rubiTrack-exports/export.gpx ./data/import/
 
-# Trigger an import (or use the Data Manager UI)
+# Trigger an import (or use the Dashboard UI)
 curl -X POST http://localhost:8000/api/scan
 
 # At this point data will begin importing and tiles will begin rendering.
@@ -76,8 +76,8 @@ curl -X POST http://localhost:8000/api/scan
 # Open the viewer
 open http://localhost:8000/
 
-# Open the Data Manager
-open http://localhost:8000/manager
+# Open the Dashboard
+open http://localhost:8000/dashboard
 ```
 
 ## Heatmap Styles
@@ -146,7 +146,7 @@ Import deduplication uses two layers, checked in order:
 
 Content-based deduplication is conservative by design. Two tracks must have exactly the same number of points, in the same order, at the same coordinates (within 0.11m) to be considered duplicates. GPS jitter alone makes it essentially impossible for two genuinely different activities to produce the same content hash, even when riding the same route on different days. Every failure mode errs on the side of importing — no unique data is ever lost.
 
-Blocked duplicates are counted in the Data Manager's Data Summary card. Individual skips are logged with the matched track name:
+Blocked duplicates are counted in the Dashboard's Data Summary card. Individual skips are logged with the matched track name:
 
 ```
 Skipping content-duplicate: export [Morning Ride].gpx matches existing track morning_ride.gpx
@@ -154,7 +154,7 @@ Skipping content-duplicate: export [Morning Ride].gpx matches existing track mor
 
 ## Pre-rendering
 
-After importing, affected tiles are automatically queued for background pre-rendering. The worker renders tiles in parallel batches, producing all three styles (warm, cool, top10) for each tile. Progress is shown in the Data Manager and via the API.
+After importing, affected tiles are automatically queued for background pre-rendering. The worker renders tiles in parallel batches, producing all three styles (warm, cool, top10) for each tile. Progress is shown in the Dashboard and via the API.
 
 The pre-renderer is automatically paused during imports to avoid wasted work (tiles rendered mid-import may be dirtied again by subsequent tracks). It resumes automatically when the import finishes.
 
@@ -168,7 +168,7 @@ curl -X POST http://localhost:8000/api/rebuild
 
 ### Missing Tiles
 
-If tiles are missing from disk (e.g., after a crash or manual deletion), the **Check for Missing Tiles** button in the Data Manager will scan all tile coordinates that should have data, compare against what's on disk across all three styles, and queue any missing tiles for pre-rendering.
+If tiles are missing from disk (e.g., after a crash or manual deletion), the **Check for Missing Tiles** button in the Dashboard will scan all tile coordinates that should have data, compare against what's on disk across all three styles, and queue any missing tiles for pre-rendering.
 
 This check also runs automatically when attempting a PMTiles export — if missing tiles are found, the export is blocked and the tiles are queued for rendering first.
 
@@ -200,7 +200,7 @@ A full rebuild with ~300,000 GPS points and ~3,000 tracks across zoom levels 2�
 
 Export heatmap tiles as a single [PMTiles](https://github.com/protomaps/PMTiles) file for static hosting or sharing.
 
-**Pre-rendering must be complete before exporting.** If dirty tiles remain in the queue, or if any tile coordinates are missing from disk, the export will be blocked with a message explaining what needs to finish first. Use the **Check for Missing Tiles** button in the Data Manager to verify readiness.
+**Pre-rendering must be complete before exporting.** If dirty tiles remain in the queue, or if any tile coordinates are missing from disk, the export will be blocked with a message explaining what needs to finish first. Use the **Check for Missing Tiles** button in the Dashboard to verify readiness.
 
 ```bash
 # Export a specific style
@@ -299,7 +299,7 @@ Environment variables (set in `docker-compose.yml`):
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/` | MapLibre GL JS map viewer with GPX overlay support |
-| `GET` | `/manager` | Data Manager with upload, import, rebuild, and export controls |
+| `GET` | `/dashboard` | Dashboard with upload, import, rebuild, and export controls |
 
 ## Dependencies
 

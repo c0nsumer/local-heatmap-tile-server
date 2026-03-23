@@ -89,9 +89,9 @@ async def viewer():
     return VIEWER_HTML.read_text()
 
 
-@app.get("/manager", response_class=HTMLResponse)
-async def manager_page():
-    """Serve the data manager dashboard."""
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page():
+    """Serve the dashboard."""
     return STATUS_HTML.read_text()
 
 
