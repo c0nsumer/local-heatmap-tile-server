@@ -385,12 +385,25 @@
     <div class="msg" id="rebuild-msg"></div>
   </div>
 
+  <!-- ===== MISSING TILES ===== -->
+  <div class="card">
+    <h2>Missing Tiles</h2>
+    <p class="hint">
+      Check if all tile coordinates have been rendered to disk across all styles.
+      Missing tiles are queued for pre-rendering.
+    </p>
+    <div class="controls">
+      <button class="btn" id="btn-check-missing" onclick="checkMissingTiles()">Check for Missing Tiles</button>
+    </div>
+    <div class="msg" id="missing-msg"></div>
+  </div>
+
   <!-- ===== EXPORT ===== -->
   <div class="card">
     <h2>Export</h2>
     <p class="hint">
       Export rendered tiles as a PMTiles archive for static hosting or use with other tools.
-      Missing tiles are rendered on-the-fly during export to ensure completeness.
+      Pre-rendering must be complete before exporting.
     </p>
     <div class="controls" style="display: flex; align-items: center; gap: 8px;">
       <select id="export-style" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px;">
@@ -737,6 +750,27 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Rebuild All Tiles';
+    }
+  };
+
+  window.checkMissingTiles = async function() {
+    const btn = document.getElementById('btn-check-missing');
+    btn.disabled = true;
+    btn.textContent = 'Checking\u2026';
+    hideMsg('missing-msg');
+    try {
+      const res = await fetch('/api/prerender/check', { method: 'POST' });
+      const d = await res.json();
+      if (d.status === 'queued') {
+        showMsg('missing-msg', d.message, 'var(--accent-amber)');
+      } else {
+        showMsg('missing-msg', d.message, 'var(--accent-green)');
+      }
+    } catch (e) {
+      showMsg('missing-msg', 'Check failed: ' + e.message, 'var(--accent-red)');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Check for Missing Tiles';
     }
   };
 

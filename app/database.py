@@ -453,6 +453,15 @@ def count_dirty_tiles() -> int:
         return conn.execute("SELECT COUNT(*) as c FROM tile_dirty").fetchone()["c"]
 
 
+def insert_dirty_tile(z: int, x: int, y: int):
+    """Mark a single tile as dirty so it gets picked up by the pre-renderer."""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO tile_dirty (z, x, y) VALUES (?, ?, ?)",
+            (z, x, y)
+        )
+
+
 def mark_all_tiles_dirty(min_zoom: int = None, max_zoom: int = None):
     """Mark every tile that contains data as dirty, for a full re-render.
 

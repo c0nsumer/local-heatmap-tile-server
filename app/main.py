@@ -320,6 +320,44 @@ async def prerender_resume():
 
 
 
+@app.post("/api/prerender/check")
+async def check_missing_tiles():
+    """Scan for tiles that should exist but aren't on disk, and queue them."""
+    loop = asyncio.get_event_loop()
+
+    def _check():
+        from app.database import get_all_data_tile_coords, insert_dirty_tile
+        all_coords = get_all_data_tile_coords()
+        missing_total = 0
+        for style in VALID_STYLES:
+            tiles_dir = Path(f"/data/tiles/{style}")
+            for z, x, y in all_coords:
+                tile_path = tiles_dir / str(z) / str(x) / f"{y}.png"
+                if not tile_path.exists():
+                    insert_dirty_tile(z, x, y)
+                    missing_total += 1
+        return missing_total, len(all_coords)
+
+    missing, total = await loop.run_in_executor(None, _check)
+
+    if missing > 0:
+        # Divide by number of styles since dirty tiles are shared across styles
+        unique_tiles = missing // len(VALID_STYLES) if missing > 0 else 0
+        logger.info(f"Missing tiles check: {missing} missing tile files across {len(VALID_STYLES)} styles, queued {unique_tiles} tiles for pre-rendering")
+        return JSONResponse({
+            "status": "queued",
+            "message": f"Found {unique_tiles} tiles missing from disk. Queued for pre-rendering.",
+            "missing": unique_tiles,
+            "total": total
+        })
+    return JSONResponse({
+        "status": "ok",
+        "message": f"All {total} tile coordinates have been rendered across all styles.",
+        "missing": 0,
+        "total": total
+    })
+
+
 @app.post("/api/export/pmtiles")
 async def export_pmtiles(style: str = "warm"):
     """Export rendered tiles as a PMTiles archive for a given style.
@@ -343,10 +381,37 @@ async def export_pmtiles(style: str = "warm"):
                        f"Please wait for pre-rendering to complete before exporting."
         }, status_code=409)
 
+    # Check for tiles that should exist but aren't on disk; queue them
+    def _check_missing():
+        from app.database import get_all_data_tile_coords, insert_dirty_tile
+        tiles_dir = Path(f"/data/tiles/{style}")
+        all_coords = get_all_data_tile_coords()
+        missing = []
+        for z, x, y in all_coords:
+            tile_path = tiles_dir / str(z) / str(x) / f"{y}.png"
+            if not tile_path.exists():
+                missing.append((z, x, y))
+        if missing:
+            for z, x, y in missing:
+                insert_dirty_tile(z, x, y)
+            logger.info(
+                f"PMTiles export ({style}): found {len(missing)} missing tiles, "
+                f"queued for pre-rendering"
+            )
+        return len(missing)
+
+    missing_count = await loop.run_in_executor(None, _check_missing)
+    if missing_count > 0:
+        return JSONResponse({
+            "status": "error",
+            "message": f"Found {missing_count} tiles that haven't been rendered yet. "
+                       f"They have been queued for pre-rendering. "
+                       f"Please try exporting again after pre-rendering completes."
+        }, status_code=409)
+
     def _build_pmtiles():
         from pmtiles.writer import Writer as PMTilesWriter
         from pmtiles.tile import zxy_to_tileid, TileType, Compression
-        from app.database import get_all_data_tile_coords
 
         export_dir = Path("/data/export")
         export_dir.mkdir(parents=True, exist_ok=True)
@@ -354,13 +419,7 @@ async def export_pmtiles(style: str = "warm"):
         tiles_dir = Path(f"/data/tiles/{style}")
         tiles_dir.mkdir(parents=True, exist_ok=True)
 
-        # Step 1: Enumerate ALL tile coords that should contain data
-        logger.info(f"PMTiles export ({style}): scanning database for tile coordinates...")
-        all_coords = get_all_data_tile_coords()
-        logger.info(f"PMTiles export ({style}): found {len(all_coords)} tile coordinates with data")
-
-        # Step 2: Also collect any tiles already on disk (covers tiles that
-        # may exist from previous renders even if not in current data scan)
+        # Collect all tiles on disk for this style
         on_disk = set()
         if tiles_dir.exists():
             for z_dir in tiles_dir.iterdir():
@@ -385,35 +444,8 @@ async def export_pmtiles(style: str = "warm"):
                             except ValueError:
                                 continue
 
-        # Merge: export everything in all_coords ∪ on_disk
-        all_tiles = all_coords | on_disk
-
-        if not all_tiles:
+        if not on_disk:
             return None, "No tiles found for this style", 0
-
-        # Step 3: Render any missing tiles on-the-fly
-        missing = all_tiles - on_disk
-        rendered_on_fly = 0
-        if missing:
-            logger.info(
-                f"PMTiles export ({style}): {len(missing)} tiles not on disk, "
-                f"rendering on-the-fly..."
-            )
-            for i, (z, x, y) in enumerate(sorted(missing)):
-                segments = get_track_segments_in_tile(z, x, y)
-                if segments:
-                    img = render_tile(segments, z, x, y, style)
-                    if img is not None:
-                        save_tile(img, style, z, x, y)
-                        rendered_on_fly += 1
-                if (i + 1) % 500 == 0:
-                    logger.info(
-                        f"PMTiles export ({style}): rendered {i + 1}/{len(missing)} "
-                        f"missing tiles..."
-                    )
-            logger.info(
-                f"PMTiles export ({style}): rendered {rendered_on_fly} missing tiles"
-            )
 
         # Step 4: Build the PMTiles archive from all tiles on disk
         tile_count = 0
@@ -423,7 +455,7 @@ async def export_pmtiles(style: str = "warm"):
         with open(out_path, "wb") as f:
             writer = PMTilesWriter(f)
 
-            for z, x, y in sorted(all_tiles):
+            for z, x, y in sorted(on_disk):
                 tile_path = tiles_dir / str(z) / str(x) / f"{y}.png"
                 if not tile_path.exists():
                     continue  # tile had no data (empty render)

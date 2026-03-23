@@ -145,8 +145,9 @@ Skipping content-duplicate: export [Morning Ride].gpx matches existing track mor
 
 ## Pre-rendering
 
-After importing, affected tiles are automatically queued for background pre-rendering.
-The worker renders tiles in parallel batches, producing all three styles (warm, cool, top10) for each tile.
+After importing, affected tiles are automatically queued for background pre-rendering. The worker renders tiles in parallel batches, producing all three styles (warm, cool, top10) for each tile. Progress is shown in the Data Manager and via the API.
+
+The pre-renderer is automatically paused during imports to avoid wasted work (tiles rendered mid-import may be dirtied again by subsequent tracks). It resumes automatically when the import finishes.
 
 ```bash
 # Check pre-render progress
@@ -156,9 +157,41 @@ curl -s http://localhost:8000/api/prerender/status
 curl -X POST http://localhost:8000/api/rebuild
 ```
 
+### Missing Tiles
+
+If tiles are missing from disk (e.g., after a crash or manual deletion), the **Check for Missing Tiles** button in the Data Manager will scan all tile coordinates that should have data, compare against what's on disk across all three styles, and queue any missing tiles for pre-rendering.
+
+This check also runs automatically when attempting a PMTiles export — if missing tiles are found, the export is blocked and the tiles are queued for rendering first.
+
+```bash
+# Check for and queue missing tiles via API
+curl -X POST http://localhost:8000/api/prerender/check
+```
+
+### Rendering Performance
+
+Tile rendering speed varies significantly by zoom level. Understanding the bottlenecks helps set expectations for large datasets:
+
+- **High-zoom tiles (z14–z18)** render very quickly — each tile covers a small area with few track segments. The pre-renderer processes these at 10+ tiles/second.
+- **Low-zoom tiles (z2–z6)** cover large geographic areas and may contain thousands of track segments from all imported activities. A single z2 or z3 tile can take 30–60 seconds to render and consume significant memory.
+
+To prevent out-of-memory crashes on low-zoom tiles, the pre-renderer uses **zoom-dependent limits**:
+
+| Zoom Level | Max Segments | Max Workers |
+|------------|-------------|-------------|
+| z2–z5 | 500 | 1 (sequential) |
+| z6–z8 | 2000 | 2 |
+| z9+ | `MAX_SEGMENTS_PER_TILE` (default 10000) | `PRERENDER_WORKERS` (default: CPU count) |
+
+When a tile's segment count exceeds the limit, it is silently capped. At low zoom levels this has minimal visual impact since individual tracks are subpixel-width anyway.
+
+A full rebuild with ~300,000 GPS points and ~3,000 tracks across zoom levels 2–18 produces approximately 60,000 tile coordinates (180,000 images across 3 styles). Expect this to take **4–6 hours** depending on hardware, with the first 10–15 minutes spent on the slow low-zoom tiles.
+
 ## PMTiles Export
 
-Export heatmap tiles as a single PMTiles file for static hosting or sharing:
+Export heatmap tiles as a single [PMTiles](https://github.com/protomaps/PMTiles) file for static hosting or sharing.
+
+**Pre-rendering must be complete before exporting.** If dirty tiles remain in the queue, or if any tile coordinates are missing from disk, the export will be blocked with a message explaining what needs to finish first. Use the **Check for Missing Tiles** button in the Data Manager to verify readiness.
 
 ```bash
 # Export a specific style
@@ -243,6 +276,7 @@ Environment variables (set in `docker-compose.yml`):
 | `GET` | `/api/prerender/status` | Worker state, batch progress, tiles remaining |
 | `POST` | `/api/prerender/pause` | Pause background pre-rendering |
 | `POST` | `/api/prerender/resume` | Resume background pre-rendering |
+| `POST` | `/api/prerender/check` | Scan for missing tile files and queue them for rendering |
 
 ### PMTiles Export
 
