@@ -277,6 +277,7 @@
   });
 
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+  map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'top-left');
   map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
   // Auto-center on data bounds if no URL hash
