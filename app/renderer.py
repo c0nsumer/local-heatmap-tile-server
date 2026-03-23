@@ -147,7 +147,7 @@ def render_tile(segments: list[list[tuple[float, float]]],
         effective_cap = MAX_SEGMENTS_PER_TILE
 
     if len(segments) > effective_cap:
-        logger.warning(
+        logger.debug(
             f"Tile {style}/{z}/{x}/{y}: capping {len(segments)} segments "
             f"to {effective_cap}"
         )
