@@ -23,13 +23,13 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 - **Editor integration**: *Use in Editor* menu to open the heatmap as a background layer in [JOSM](https:josm.openstreetmap.de) or [iD](https://www.openstreetmap.org/edit?editor=id), or copy the TMS URL.
 - **GPX overlay**: Drag-and-drop GPX files onto the map viewer to compare routes against the heatmap. (See [GPX Overlay](#gpx-overlay).)
 - **Data Manager**: Live pre-render progress, file upload, and import/rebuild/export controls.
-- **Light and dark modes**: Follows OS setting, or manually controllable.
+- **Light and dark modes**: Follows OS appearance mode, or manually controllable.
 - **Basemap picker**: Auto (follows appearance mode), Dark, Light, or OpenStreetMap.
 
 ## Screenshots
 
-![Built-in MapLibre GL JS viewer in Firefox (light mode, warm style)](screenshots/local-gps-tiles-server_v1_firefox_ramba_light.png)
-*Built-in viewer in Firefox, warm style, light mode.*
+![Built-in MapLibre GL JS viewer in Firefox (light mode, cool style, Top 10% overlay).](screenshots/local-gps-tiles-server_v1_firefox_ramba_light_cool_10.png)
+*Built-in MapLibre GL JS viewer in Firefox (light mode, cool style, Top 10% overlay).*
 
 ![Warm heatmap tiles displayed in JOSM](screenshots/local-gps-tile-server_v1_josm_ramba_warm.png)
 *Warm heatmap tiles displayed as an imagery layer in JOSM.*
