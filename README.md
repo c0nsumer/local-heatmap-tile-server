@@ -39,8 +39,8 @@ Files for this demo can be browsed at: https://trailmaps.app/pmtiles-viewer/demo
 
 ## Screenshots
 
-![Built-in MapLibre GL JS viewer in Firefox (light mode, cool style, Top 10% overlay).](screenshots/local-gps-tiles-server_v1_firefox_ramba_light_cool_10.png)
-*Built-in MapLibre GL JS viewer in Firefox (light mode, cool style, Top 10% overlay).*
+![Built-in MapLibre GL JS viewer in Firefox (dark mode, warm style, Top 10% overlay).](screenshots/local-gps-tile-server_v1_firefox_timber_ridge.png)
+*Built-in MapLibre GL JS viewer in Firefox (dark mode, warm style, Top 10% overlay).*
 
 ![Warm heatmap tiles displayed in JOSM](screenshots/local-gps-tile-server_v1_josm_ramba_warm.png)
 *Warm heatmap tiles displayed as an imagery layer in JOSM.*
@@ -145,6 +145,8 @@ Import deduplication uses two layers, checked in order:
 2. **Content hash**: The GPS points themselves are hashed (SHA256 of all coordinates normalized to 6 decimal places, ~0.11m resolution). This catches the same track appearing in different files — for example, a standalone `ride.gpx` and the same ride inside an aggregate `all_activities.gpx` export from an app like rubiTrack.
 
 Content-based deduplication is conservative by design. Two tracks must have exactly the same number of points, in the same order, at the same coordinates (within 0.11m) to be considered duplicates. GPS jitter alone makes it essentially impossible for two genuinely different activities to produce the same content hash, even when riding the same route on different days. Every failure mode errs on the side of importing — no unique data is ever lost.
+
+**Cross-format limitation:** Deduplication will generally not detect the same ride imported as both a `.fit` and `.gpx` file. FIT and GPX formats store coordinates differently (semicircles vs. decimal degrees), often have different point counts (smart recording vs. every-second), and may have been processed differently by the exporting app. To avoid duplicates, import each ride from only one source format.
 
 Blocked duplicates are counted in the Dashboard's Data Summary card. Individual skips are logged with the matched track name:
 
