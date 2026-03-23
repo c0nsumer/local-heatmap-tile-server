@@ -15,8 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 
-# Copy nginx and supervisor configs
+# Copy nginx config and custom error page
 COPY nginx.conf /etc/nginx/nginx.conf
+COPY 502.html /usr/share/nginx/html/502.html
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Create data directories
