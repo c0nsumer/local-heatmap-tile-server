@@ -454,7 +454,7 @@
 
   // --- Parse URL hash: #z/lat/lon/style[/top10] ---
   var initCenter = [-98.5833, 39.8333];
-  var initZoom = 10;
+  var initZoom = 4;
   var initStyle = 'warm';
   var initTop10 = false;
   var hasHashView = false;
@@ -481,6 +481,26 @@
 
   var currentStyle = initStyle;
   document.getElementById('style-select').value = currentStyle;
+
+  // --- Fetch stats before building map so we can set initial bounds ---
+  function initMap(statsData) {
+    // Apply stats to UI
+    if (statsData) {
+      document.getElementById('stat-tracks').textContent =
+        statsData.total_tracks.toLocaleString();
+      document.getElementById('stat-points').textContent =
+        (statsData.total_points >= 1e6)
+          ? (statsData.total_points / 1e6).toFixed(1) + 'M'
+          : statsData.total_points.toLocaleString();
+      // Use data bounds as initial view if no URL hash
+      if (statsData.bounds && !hasHashView) {
+        var b = statsData.bounds;
+        var cLat = (b.min_lat + b.max_lat) / 2;
+        var cLon = (b.min_lon + b.max_lon) / 2;
+        initCenter = [cLon, cLat];
+        // Don't set zoom — we'll fitBounds after map creation
+      }
+    }
 
   // --- Build map ---
   var mapStyle = {
@@ -602,25 +622,14 @@
   map.once('idle', updateHash);
   updateHash();
 
-  // --- Load stats and auto-fit ---
-  fetch('/api/stats')
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      document.getElementById('stat-tracks').textContent =
-        data.total_tracks.toLocaleString();
-      document.getElementById('stat-points').textContent =
-        (data.total_points >= 1e6)
-          ? (data.total_points / 1e6).toFixed(1) + 'M'
-          : data.total_points.toLocaleString();
-      if (data.bounds && !hasHashView) {
-        map.fitBounds(
-          [[data.bounds.min_lon, data.bounds.min_lat],
-           [data.bounds.max_lon, data.bounds.max_lat]],
-          { padding: 50, animate: false }
-        );
-      }
-    })
-    .catch(function() {});
+  // Auto-fit to data bounds (only if no URL hash and stats had bounds)
+  if (statsData && statsData.bounds && !hasHashView) {
+    map.fitBounds(
+      [[statsData.bounds.min_lon, statsData.bounds.min_lat],
+       [statsData.bounds.max_lon, statsData.bounds.max_lat]],
+      { padding: 50, animate: false }
+    );
+  }
 
   // --- Editor popup ---
   var editorPopup = document.getElementById('editor-popup');
@@ -786,6 +795,14 @@
       if (f.name.toLowerCase().endsWith('.gpx')) addGpxFile(f);
     });
   });
+
+  } // end initMap
+
+  // Fetch stats first, then build the map with correct initial bounds
+  fetch('/api/stats')
+    .then(function(r) { return r.json(); })
+    .then(function(data) { initMap(data); })
+    .catch(function() { initMap(null); });
 })();
 </script>
 </body>
