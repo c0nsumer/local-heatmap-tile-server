@@ -3,27 +3,77 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Local Heatmap Tile Server — Data Manager</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;700&display=swap');
-
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  /* Light theme (default) */
   :root {
-    --bg: #0a0e14;
-    --surface: #12161e;
-    --surface2: #1a1f2b;
-    --border: #2a3040;
+    --bg: #f2f2f2;
+    --surface: rgba(255,255,255,0.94);
+    --surface2: #e8e8e8;
+    --border: #ccc;
+    --text: #444;
+    --text-dim: #888;
+    --accent: #c06020;
+    --accent-green: #2a8a40;
+    --accent-red: #c03030;
+    --accent-blue: #2070b0;
+    --accent-purple: #7050c0;
+    --accent-amber: #b07020;
+    --link: #555;
+    --link-hover: #333;
+    --badge-idle-bg: rgba(42,138,64,0.1);
+    --badge-render-bg: rgba(192,96,32,0.1);
+    --badge-pause-bg: rgba(192,48,48,0.1);
+    --btn-pause-bg: rgba(192,48,48,0.06);
+    --btn-pause-border: rgba(192,48,48,0.25);
+    --btn-resume-bg: rgba(42,138,64,0.06);
+    --btn-resume-border: rgba(42,138,64,0.25);
+    --btn-rebuild-bg: rgba(192,96,32,0.06);
+    --btn-rebuild-border: rgba(192,96,32,0.25);
+    --btn-upload-bg: rgba(32,112,176,0.06);
+    --btn-upload-border: rgba(32,112,176,0.25);
+    --btn-export-bg: rgba(112,80,192,0.06);
+    --btn-export-border: rgba(112,80,192,0.25);
+    --drop-hover-bg: rgba(32,112,176,0.05);
+  }
+
+  /* Dark theme */
+  html.dark {
+    --bg: #1a1a2e;
+    --surface: rgba(30,34,46,0.94);
+    --surface2: #252a36;
+    --border: #3a4050;
     --text: #c8cdd8;
-    --text-dim: #6b7280;
-    --accent: #ffa040;
+    --text-dim: #7a8194;
+    --accent: #e08040;
     --accent-green: #40c060;
     --accent-red: #e04050;
-    --accent-blue: #3090e0;
+    --accent-blue: #40a0e0;
+    --accent-purple: #a078ff;
+    --accent-amber: #e0a040;
+    --link: #7a8494;
+    --link-hover: #c8cdd8;
+    --badge-idle-bg: rgba(64,192,96,0.15);
+    --badge-render-bg: rgba(224,128,64,0.15);
+    --badge-pause-bg: rgba(224,64,80,0.15);
+    --btn-pause-bg: rgba(224,64,80,0.1);
+    --btn-pause-border: rgba(224,64,80,0.3);
+    --btn-resume-bg: rgba(64,192,96,0.1);
+    --btn-resume-border: rgba(64,192,96,0.3);
+    --btn-rebuild-bg: rgba(224,128,64,0.1);
+    --btn-rebuild-border: rgba(224,128,64,0.3);
+    --btn-upload-bg: rgba(64,160,224,0.1);
+    --btn-upload-border: rgba(64,160,224,0.3);
+    --btn-export-bg: rgba(160,120,255,0.1);
+    --btn-export-border: rgba(160,120,255,0.3);
+    --drop-hover-bg: rgba(64,160,224,0.08);
   }
 
   body {
-    font-family: 'DM Sans', system-ui, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -38,18 +88,17 @@
   }
 
   .header h1 {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 600;
-    color: var(--accent);
+    color: var(--text);
   }
 
   .header a {
     font-size: 13px;
-    color: var(--accent-blue);
+    color: var(--link);
     text-decoration: none;
   }
-  .header a:hover { text-decoration: underline; }
+  .header a:hover { color: var(--link-hover); text-decoration: underline; }
 
   .grid {
     display: grid;
@@ -60,15 +109,15 @@
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 6px;
     padding: 20px;
   }
 
   .card h2 {
-    font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.2px;
     color: var(--text-dim);
     margin-bottom: 16px;
   }
@@ -83,7 +132,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 0;
+    padding: 7px 0;
     border-bottom: 1px solid var(--border);
   }
   .stat-row:last-child { border-bottom: none; }
@@ -94,8 +143,7 @@
   }
 
   .stat-value {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
   }
 
@@ -103,18 +151,16 @@
     display: inline-block;
     padding: 2px 10px;
     border-radius: 12px;
-    font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
     font-weight: 600;
   }
-  .badge-idle { background: rgba(64,192,96,0.15); color: var(--accent-green); }
-  .badge-rendering { background: rgba(255,160,64,0.15); color: var(--accent); }
-  .badge-paused { background: rgba(224,64,80,0.15); color: var(--accent-red); }
-
+  .badge-idle { background: var(--badge-idle-bg); color: var(--accent-green); }
+  .badge-rendering { background: var(--badge-render-bg); color: var(--accent); }
+  .badge-paused { background: var(--badge-pause-bg); color: var(--accent-red); }
 
   .progress-bar {
     width: 100%;
-    height: 6px;
+    height: 5px;
     background: var(--surface2);
     border-radius: 3px;
     margin-top: 12px;
@@ -138,48 +184,51 @@
     flex: 1;
     padding: 8px 16px;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    font-family: 'DM Sans', system-ui, sans-serif;
+    border-radius: 4px;
+    background: transparent;
+    font-family: inherit;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s;
+    color: var(--text);
   }
+  .btn:hover { opacity: 0.85; }
 
   .btn-pause {
-    background: rgba(224,64,80,0.1);
+    background: var(--btn-pause-bg);
     color: var(--accent-red);
-    border-color: rgba(224,64,80,0.3);
+    border-color: var(--btn-pause-border);
   }
-  .btn-pause:hover { background: rgba(224,64,80,0.2); }
+  .btn-pause:hover { opacity: 0.8; }
 
   .btn-resume {
-    background: rgba(64,192,96,0.1);
+    background: var(--btn-resume-bg);
     color: var(--accent-green);
-    border-color: rgba(64,192,96,0.3);
+    border-color: var(--btn-resume-border);
   }
-  .btn-resume:hover { background: rgba(64,192,96,0.2); }
+  .btn-resume:hover { opacity: 0.8; }
 
   .btn-rebuild {
-    background: rgba(255,160,64,0.1);
+    background: var(--btn-rebuild-bg);
     color: var(--accent);
-    border-color: rgba(255,160,64,0.3);
+    border-color: var(--btn-rebuild-border);
   }
-  .btn-rebuild:hover { background: rgba(255,160,64,0.2); }
+  .btn-rebuild:hover { opacity: 0.8; }
 
   .btn-upload {
-    background: rgba(48,144,224,0.1);
+    background: var(--btn-upload-bg);
     color: var(--accent-blue);
-    border-color: rgba(48,144,224,0.3);
+    border-color: var(--btn-upload-border);
   }
-  .btn-upload:hover { background: rgba(48,144,224,0.2); }
+  .btn-upload:hover { opacity: 0.8; }
 
   .btn-export {
-    background: rgba(160,120,255,0.1);
-    color: #a078ff;
-    border-color: rgba(160,120,255,0.3);
+    background: var(--btn-export-bg);
+    color: var(--accent-purple);
+    border-color: var(--btn-export-border);
   }
-  .btn-export:hover { background: rgba(160,120,255,0.2); }
+  .btn-export:hover { opacity: 0.8; }
 
   .btn:disabled {
     opacity: 0.4;
@@ -188,7 +237,7 @@
 
   .drop-zone {
     border: 2px dashed var(--border);
-    border-radius: 8px;
+    border-radius: 6px;
     padding: 24px 16px;
     text-align: center;
     color: var(--text-dim);
@@ -203,14 +252,14 @@
   }
   .drop-zone.drag-over {
     border-color: var(--accent-blue);
-    background: rgba(48,144,224,0.08);
+    background: var(--drop-hover-bg);
     color: var(--accent-blue);
   }
   .drop-zone .drop-icon {
     font-size: 28px;
     display: block;
     margin-bottom: 8px;
-    opacity: 0.6;
+    opacity: 0.5;
   }
 
   .file-list {
@@ -226,7 +275,6 @@
     align-items: center;
     padding: 4px 0;
     font-size: 12px;
-    font-family: 'JetBrains Mono', monospace;
     border-bottom: 1px solid var(--border);
   }
   .file-item:last-child { border-bottom: none; }
@@ -263,19 +311,44 @@
     display: none;
   }
 
-  .last-updated {
-    font-family: 'JetBrains Mono', monospace;
+  select {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: inherit;
+    font-size: 13px;
+  }
+
+  .footer {
     font-size: 11px;
     color: var(--text-dim);
     text-align: right;
     margin-top: 16px;
   }
+  .footer a {
+    color: var(--link);
+    text-decoration: none;
+  }
+  .footer a:hover { color: var(--link-hover); text-decoration: underline; }
 </style>
+<script>
+  // Apply dark class before paint to avoid flash
+  var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+  if (darkMq.matches) { document.documentElement.classList.add('dark'); }
+  function applyAppearance() {
+    if (darkMq.matches) { document.documentElement.classList.add('dark'); }
+    else { document.documentElement.classList.remove('dark'); }
+  }
+  try { darkMq.addEventListener('change', applyAppearance); }
+  catch(e) { darkMq.addListener(applyAppearance); }
+</script>
 </head>
 <body>
 
 <div class="header">
-  <h1>Local Heatmap Tile Server — Data Manager</h1>
+  <h1>Data Manager</h1>
   <a href="/">&larr; Back to Map</a>
 </div>
 
@@ -383,11 +456,8 @@
       <button class="btn btn-rebuild" id="btn-rebuild" onclick="rebuildAll()">Rebuild All Tiles</button>
     </div>
     <div class="msg" id="rebuild-msg"></div>
-  </div>
 
-  <!-- ===== MISSING TILES ===== -->
-  <div class="card">
-    <h2>Missing Tiles</h2>
+    <h2 class="section-divider">Missing Tiles</h2>
     <p class="hint">
       Check if all tile coordinates have been rendered to disk across all styles.
       Missing tiles are queued for pre-rendering.
@@ -406,7 +476,7 @@
       Pre-rendering must be complete before exporting.
     </p>
     <div class="controls" style="display: flex; align-items: center; gap: 8px;">
-      <select id="export-style" style="background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px;">
+      <select id="export-style">
         <option value="warm">Warm</option>
         <option value="cool">Cool</option>
         <option value="top10">Top 10%</option>
@@ -418,7 +488,7 @@
 
 </div>
 
-<div class="last-updated"><a href="https://github.com/c0nsumer/local-heatmap-tile-server" style="color: var(--accent-blue); text-decoration: none;">Local Heatmap Tile Server</a> <span id="stat-version"></span> by <a href="https://nuxx.net" style="color: var(--accent-blue); text-decoration: none;">Steve Vigneau</a> &middot; Auto-refresh: <span id="refresh-time">--</span></div>
+<div class="footer"><a href="https://github.com/c0nsumer/local-heatmap-tile-server">Local Heatmap Tile Server</a> <span id="stat-version"></span> by <a href="https://nuxx.net">Steve Vigneau</a> &middot; Auto-refresh: <span id="refresh-time">--</span></div>
 
 <script>
 (function() {
@@ -548,7 +618,7 @@
     if (pendingFiles.length === 0) return;
     const btn = document.getElementById('btn-upload');
     btn.disabled = true;
-    btn.textContent = 'Uploading...';
+    btn.textContent = 'Uploading\u2026';
     hideMsg('upload-msg');
 
     const formData = new FormData();
@@ -711,7 +781,7 @@
   window.importFiles = async function() {
     const btn = document.getElementById('btn-import');
     btn.disabled = true;
-    btn.textContent = 'Scanning...';
+    btn.textContent = 'Scanning\u2026';
     hideMsg('import-msg');
     try {
       const res = await fetch('/api/scan', { method: 'POST' });
@@ -737,7 +807,7 @@
   window.rebuildAll = async function() {
     const btn = document.getElementById('btn-rebuild');
     btn.disabled = true;
-    btn.textContent = 'Rebuilding...';
+    btn.textContent = 'Rebuilding\u2026';
     hideMsg('rebuild-msg');
     try {
       const res = await fetch('/api/rebuild', { method: 'POST' });
@@ -806,7 +876,7 @@
         let msg = d.message;
         if (d.warning) msg += ' \u26a0\ufe0f ' + d.warning;
         showMsgHtml('export-msg',
-          msg + ' &mdash; <a href="' + d.download + '" style="color: #a078ff;">Download</a>');
+          msg + ' &mdash; <a href="' + d.download + '" style="color: var(--accent-purple);">Download</a>');
       } else {
         showMsg('export-msg', d.message || 'Export failed', 'var(--accent-red)');
       }

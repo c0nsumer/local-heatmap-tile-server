@@ -155,6 +155,16 @@ async def get_tile(style: str, z: int, x: int, y: int):
     )
 
     if img is None:
+        # Save empty tile to disk so nginx serves it directly next time,
+        # avoiding repeated on-the-fly renders for tiles with no data.
+        # These get deleted automatically if new data is imported in the area.
+        tile_dir = Path(f"/data/tiles/{style}/{z}/{x}")
+        tile_dir.mkdir(parents=True, exist_ok=True)
+        tile_path = tile_dir / f"{y}.png"
+        try:
+            tile_path.write_bytes(EMPTY_TILE)
+        except Exception:
+            pass
         return Response(
             content=EMPTY_TILE,
             media_type="image/png",
@@ -516,26 +526,17 @@ async def export_pmtiles(style: str = "warm"):
         msg = (
             f"Exported {tile_count} tiles ({file_size / 1024 / 1024:.1f} MB)"
         )
-        if rendered_on_fly:
-            msg += f" — {rendered_on_fly} tiles rendered on-the-fly"
-        return out_path, msg, rendered_on_fly
+        return out_path, msg
 
-    out_path, message, rendered_on_fly = await loop.run_in_executor(
+    out_path, message = await loop.run_in_executor(
         None, _build_pmtiles
     )
 
     if out_path is None:
         return JSONResponse({"status": "error", "message": message}, status_code=400)
 
-    result = {
+    return JSONResponse({
         "status": "ok",
         "message": message,
         "download": f"/export/{style}.pmtiles",
-    }
-    if dirty_count > 0:
-        result["warning"] = (
-            f"{dirty_count} tiles were still in the pre-render queue. "
-            f"Missing tiles were rendered on-the-fly to ensure a complete export."
-        )
-
-    return JSONResponse(result)
+    })
