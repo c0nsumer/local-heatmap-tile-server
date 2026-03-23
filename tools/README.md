@@ -1,6 +1,12 @@
 # Tools
 
-Utility scripts for the Local Heatmap Tile Server. These run on the host machine, not inside the Docker container.
+Utilities for the Local Heatmap Tile Server. These run on the host machine, not inside the Docker container.
+
+## pmtiles-viewer/
+
+A standalone MapLibre GL JS viewer and Caddy web server configuration for hosting exported PMTiles files without the tile server running. Uses the native `pmtiles://` protocol for efficient tile loading.
+
+See `pmtiles-viewer/README.md` for setup instructions and details.
 
 ## reset.sh
 

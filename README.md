@@ -12,6 +12,7 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 - **Large imports**: Capable of importing a large number of files, or tracks, at once. Tested to import 4000+ .FIT files at once, and a single .GPX (exported from rubiTrack) containing ~4000 tracks.
 - **Three heatmap styles**: Warm (orange/red), Cool (blue), and Top 10% (lime green overlay highlighting most-used routes).
 - **XYZ tile server**: Standard `/{style}/{z}/{x}/{y}.png` URLs compatible with any tile client.
+- **PMTiles export**: Package tiles into a single PMTiles file for static hosting or sharing. (See [PMTiles Viewer](#additional-tools) for a useful stand-alone viewer.)
 - **Incremental updates**: Only tiles affected by new data are re-rendered.
 - **Duplicate detection**: Two-layer deduplication prevents re-importing the same data (see [Deduplication](#deduplication)).
 - **nginx static serving**: Pre-rendered tiles served directly from disk by nginx for fast loading.
@@ -20,9 +21,28 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 
 - **MapLibre GL JS viewer**: Built-in WebGL map with automatic light/dark mode, smooth fractional zoom, basemap selection, and bookmarkable URLs.
 - **JOSM compatible**: One-click "Open in JOSM" link with style selection.
-- **PMTiles export**: Package tiles into a single PMTiles file for static hosting or sharing. (See [PMTiles Viewer](#pmtiles-viewer) for a useful stand-alone viewer.)
-- **GPX overlay**: Drag-and-drop GPX files onto the map viewer to compare routes against the heatmap.
+- **GPX overlay**: Drag-and-drop GPX files onto the map viewer to compare routes against the heatmap. (See [GPX Overlay](#gpx-overlay).)
 - **Data Manager**: Live pre-render progress, file upload, and import/rebuild/export controls.
+
+## Screenshots
+
+![Built-in MapLibre GL JS viewer in Firefox (light mode, warm style)](screenshots/local-gps-tiles-server_v1_firefox_ramba_light.png)
+*Built-in viewer in Firefox, warm style, light mode.*
+
+![Warm heatmap tiles displayed in JOSM](screenshots/local-gps-tile-server_v1_josm_ramba_warm.png)
+*Warm heatmap tiles displayed as an imagery layer in JOSM.*
+
+## Import / Tile Rendering Workflow
+
+1. Upload files via the Data Manager UI, or copy them into `./data/import/`.
+2. If copied to the import directory, trigger a scan via the Data Manager or: `curl -X POST http://localhost:8000/api/scan`.
+3. Each file is parsed according to its format:
+   - **FIT/TCX**: Parsed directly, one track per file.
+   - **GPX**: Streamed through a chunked parser that extracts `<trk>` blocks one at a time, supporting multi-GB files with thousands of tracks without excessive memory use. Malformed XML is automatically sanitized (see [GPX Sanitization](#gpx-sanitization)). If a track still fails to parse, it is skipped with a warning and the remaining tracks continue importing.
+4. Each track is checked for duplicates (see [Deduplication](#deduplication)) and stored in SQLite.
+5. Affected tiles are marked dirty, and stale cached tile files are deleted from disk so nginx serves fresh renders on the next request.
+6. Successfully imported files are moved to `./data/import/done/`. Files that fail to parse entirely are moved to `./data/import/errors/`.
+7. The background pre-render worker automatically picks up dirty tiles and begins rendering.
 
 ## Quick Start / Example
 
@@ -38,19 +58,14 @@ cp ~/rubiTrack-exports/export.gpx ./data/import/
 # Trigger an import (or use the Data Manager UI)
 curl -X POST http://localhost:8000/api/scan
 
+# At this point data will begin importing and tiles will begin rendering.
+
 # Open the viewer
 open http://localhost:8000/
 
 # Open the Data Manager
 open http://localhost:8000/manager
 ```
-
-## Architecture
-
-The container runs nginx and uvicorn (FastAPI) via supervisord:
-
-- **nginx** (port 8000): Serves pre-rendered tiles directly from disk using `sendfile()`. Falls back to uvicorn for tiles not yet rendered. Proxies all API and UI requests to uvicorn.
-- **uvicorn** (port 8001, internal): Handles file imports, on-the-fly tile rendering, the pre-render background worker, and all API endpoints.
 
 ## Heatmap Styles
 
@@ -76,8 +91,9 @@ Tiles are rendered at zoom levels 2–18. The viewer smoothly upscales z18 tiles
 
 Click the "Open in JOSM" link in the viewer to add the heatmap as an imagery layer (uses whichever style is currently selected). Or add it manually:
 
-**Imagery → Custom Imagery:**
+**Warm Example**
 
+- Imagery → Custom Imagery
 - URL: `tms:http://localhost:8000/tiles/warm/{z}/{x}/{y}.png`
 - Name: `Local Heatmap`
 - Min zoom: 2, Max zoom: 18
@@ -127,17 +143,26 @@ Click the "Open in JOSM" link in the viewer to add the heatmap as an imagery lay
 | `GET` | `/` | MapLibre GL JS map viewer with GPX overlay support |
 | `GET` | `/manager` | Data Manager with upload, import, rebuild, and export controls |
 
-## Import Workflow
 
-1. Upload files via the Data Manager UI, or copy them into `./data/import/`.
-2. If copied to the import directory, trigger a scan via the Data Manager or: `curl -X POST http://localhost:8000/api/scan`.
-3. Each file is parsed according to its format:
-   - **FIT/TCX**: Parsed directly, one track per file.
-   - **GPX**: Streamed through a chunked parser that extracts `<trk>` blocks one at a time, supporting multi-GB files with thousands of tracks without excessive memory use. Malformed XML within a track (e.g., unescaped angle brackets in `<desc>` or `<cmt>` fields) is sanitized automatically. If a track still fails to parse, it is skipped and the remaining tracks continue importing.
-4. Each track is checked for duplicates (see [Deduplication](#deduplication)) and stored in SQLite.
-5. Affected tiles are marked dirty, and stale cached tile files are deleted from disk so nginx serves fresh renders on the next request.
-6. Successfully imported files are moved to `./data/import/done/`. Files that fail to parse entirely are moved to `./data/import/errors/`.
-7. The background pre-render worker automatically picks up dirty tiles and begins rendering.
+## GPX Sanitization
+
+GPX files exported from fitness apps sometimes contain invalid XML that would cause a standard parser to fail. Before parsing each track, the importer automatically sanitizes text elements (`<name>`, `<desc>`, `<cmt>`) to fix common issues:
+
+- **Bare ampersands**: `R&R` → `R&amp;R`, `PB&J` → `PB&amp;J`. The `&` character is special in XML and must be escaped. Existing entities like `&amp;` and `&lt;` are preserved (not double-escaped).
+- **Unescaped angle brackets**: `<sigh>` → `&lt;sigh&gt;`, `<angryface>` → `&lt;angryface&gt;`. Casual use of `<` and `>` in descriptions is interpreted as XML tags by the parser. The sanitizer identifies text that looks like invalid tags inside known text elements and escapes it.
+- **Namespace preservation**: XML namespace declarations from the root `<gpx>` element (e.g., `xmlns:gpxdata="..."`) are captured and included when parsing each individual track block, so extension elements like `<gpxdata:hr>` and `<gpxdata:cadence>` parse correctly.
+
+Tracks that still fail to parse after sanitization are skipped individually — the remaining tracks in the file continue importing normally. Skipped tracks are logged with the reason:
+
+```
+Skipping malformed track #22 in racing.gpx: not well-formed (invalid token): line 2, column 24
+```
+
+Tracks with no GPS data (e.g., indoor activities with no `<trkpt>` elements) are also skipped, logged separately from parse errors:
+
+```
+biking.gpx: 32 tracks had no GPS data (indoor or no trackpoints)
+```
 
 ## Deduplication
 
@@ -180,7 +205,7 @@ curl -X POST http://localhost:8000/api/export/pmtiles?style=warm
 curl -O http://localhost:8000/export/warm.pmtiles
 ```
 
-See `PMTiles Viewer/` for a standalone viewer and Caddy configuration for hosting the exported files.
+See `tools/pmtiles-viewer/` for a standalone viewer and Caddy configuration for hosting the exported files.
 
 ## GPX Overlay
 
@@ -240,18 +265,20 @@ Environment variables (set in `docker-compose.yml`):
 - [MapLibre GL JS](https://maplibre.org/projects/gl-js/) (WebGL map rendering)
 - [toGeoJSON](https://github.com/mapbox/togeojson) (client-side GPX parsing)
 
+## Architecture
+
+The container runs nginx and uvicorn (FastAPI) via supervisord:
+
+- **nginx** (port 8000): Serves pre-rendered tiles directly from disk using `sendfile()`. Falls back to uvicorn for tiles not yet rendered. Proxies all API and UI requests to uvicorn.
+- **uvicorn** (port 8001, internal): Handles file imports, on-the-fly tile rendering, the pre-render background worker, and all API endpoints.
+
 # Additional Tools
 
-## PMTiles Viewer
+The `tools/` directory contains utilities that run on the host:
 
-The `PMTiles Viewer/` directory contains a standalone MapLibre GL JS viewer and Caddy configuration for hosting exported PMTiles files without the tile server. Uses the native `pmtiles://` protocol for efficient tile loading. See `PMTiles Viewer/README.md` for setup instructions.
-
-## Tools
-
-The `tools/` directory contains utility scripts that run on the host:
-
-- **`reset.sh`**: Completely resets the server: stops the container, removes the image, and deletes all data
-- **`vpl-to-gpx.sh`**: Converts Honda/Acura VPLog (.vpl) GPS files to GPX using GPSBabel
+- **`pmtiles-viewer/`**: Standalone MapLibre GL JS viewer and Caddy configuration for hosting exported PMTiles files without the tile server. Uses the native `pmtiles://` protocol for efficient tile loading. See `tools/pmtiles-viewer/README.md` for setup instructions.
+- **`reset.sh`**: Completely resets the server: stops the container, removes the image, and deletes all data.
+- **`vpl-to-gpx.sh`**: Converts Honda/Acura VPLog (.vpl) GPS files to GPX using GPSBabel.
 
 See `tools/README.md` for details.
 
