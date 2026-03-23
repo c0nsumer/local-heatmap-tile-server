@@ -744,19 +744,44 @@
     const btn = document.getElementById('btn-export');
     const style = document.getElementById('export-style').value;
     btn.disabled = true;
-    btn.textContent = 'Exporting...';
+    btn.textContent = 'Exporting\u2026';
     hideMsg('export-msg');
     try {
       const res = await fetch('/api/export/pmtiles?style=' + encodeURIComponent(style), { method: 'POST' });
-      const d = await res.json();
+      if (!res.ok) {
+        let errMsg;
+        try {
+          const d = await res.json();
+          errMsg = d.message;
+        } catch(e) {
+          errMsg = res.status === 502
+            ? 'The server may have run out of memory. Try again after pre-rendering completes.'
+            : 'HTTP ' + res.status;
+        }
+        showMsg('export-msg', errMsg, 'var(--accent-red)');
+        return;
+      }
+      let d;
+      try {
+        d = await res.json();
+      } catch (parseErr) {
+        showMsg('export-msg', 'Export failed: server returned an invalid response. This may indicate a timeout or crash during export. Try again after pre-rendering completes.', 'var(--accent-red)');
+        return;
+      }
       if (d.status === 'ok') {
+        let msg = d.message;
+        if (d.warning) msg += ' \u26a0\ufe0f ' + d.warning;
         showMsgHtml('export-msg',
-          d.message + ' &mdash; <a href="' + d.download + '" style="color: #a078ff;">Download</a>');
+          msg + ' &mdash; <a href="' + d.download + '" style="color: #a078ff;">Download</a>');
       } else {
-        showMsg('export-msg', d.message, 'var(--accent-red)');
+        showMsg('export-msg', d.message || 'Export failed', 'var(--accent-red)');
       }
     } catch (e) {
-      showMsg('export-msg', 'Export failed: ' + e.message, 'var(--accent-red)');
+      if (e.name === 'TypeError' && e.message.includes('fetch')) {
+        showMsg('export-msg', 'Export failed: connection lost. The export may still be running on the server \u2014 check the logs.', 'var(--accent-red)');
+      } else {
+        showMsg('export-msg', 'Export failed: ' + e.message, 'var(--accent-red)');
+      }
       console.error('Export failed', e);
     } finally {
       btn.disabled = false;

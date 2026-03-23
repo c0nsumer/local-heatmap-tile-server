@@ -334,8 +334,14 @@ async def export_pmtiles(style: str = "warm"):
 
     loop = asyncio.get_event_loop()
 
-    # Check for dirty tiles and warn
+    # Block export if pre-rendering is still in progress
     dirty_count = await loop.run_in_executor(None, count_dirty_tiles)
+    if dirty_count > 0:
+        return JSONResponse({
+            "status": "error",
+            "message": f"Pre-rendering is still in progress ({dirty_count} tiles remaining). "
+                       f"Please wait for pre-rendering to complete before exporting."
+        }, status_code=409)
 
     def _build_pmtiles():
         from pmtiles.writer import Writer as PMTilesWriter
