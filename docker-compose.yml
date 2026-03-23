@@ -18,7 +18,7 @@ services:
       - PRERENDER_BATCH_PAUSE=0.1
       - PRERENDER_IDLE_PAUSE=5.0
       - PRERENDER_WORKERS=6
-      - MAX_SEGMENTS_PER_TILE=2500
+      - MAX_SEGMENTS_PER_TILE=10000
     deploy:
       resources:
         limits:

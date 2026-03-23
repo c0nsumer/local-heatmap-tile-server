@@ -206,7 +206,7 @@ Environment variables (set in `docker-compose.yml`):
 | `PRERENDER_BATCH_PAUSE` | `0.5` | Seconds to pause between batches |
 | `PRERENDER_IDLE_PAUSE` | `5.0` | Seconds to sleep when queue is empty |
 | `PRERENDER_WORKERS` | CPU count | Parallel render worker threads |
-| `MAX_SEGMENTS_PER_TILE` | `2500` | Max track segments per tile (caps memory on low-zoom tiles) |
+| `MAX_SEGMENTS_PER_TILE` | `10000` | Max track segments per tile (caps memory on low-zoom tiles) |
 | `MAX_POINTS_PER_TILE` | `200000` | Max trackpoints queried per tile |
 | `TILE_MEM_CACHE_SIZE` | `2000` | In-memory LRU cache size (number of tiles) |
 
