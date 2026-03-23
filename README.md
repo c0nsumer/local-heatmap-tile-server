@@ -28,6 +28,15 @@ The code was almost entirely written by Claude, while I heavily edited the `READ
 - **Light and dark modes**: Follows OS appearance mode, or manually controllable.
 - **Basemap picker**: Auto (follows appearance mode), Dark, Light, or OpenStreetMap.
 
+## Demo
+
+A demo of the [PMTiles Viewer](tools/pmtiles-viewer/README.md) showing a series of rides along the [Iceman Cometh Challenge](https://www.iceman.com/) course area can be found here:
+
+- [Full Viewer](https://trailmaps.app/pmtiles-viewer-demo/pmtiles-viewer.html)
+- [Simple Viewer](https://trailmaps.app/pmtiles-viewer-demo/pmtiles-viewer-simple.html)
+
+Files for this demo can be browsed at: https://trailmaps.app/pmtiles-viewer/demo/
+
 ## Screenshots
 
 ![Built-in MapLibre GL JS viewer in Firefox (light mode, cool style, Top 10% overlay).](screenshots/local-gps-tiles-server_v1_firefox_ramba_light_cool_10.png)
