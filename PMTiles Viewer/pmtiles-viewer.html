@@ -477,11 +477,13 @@
   });
 
   // --- Listen for OS color scheme changes ---
-  darkMq.addEventListener('change', function() {
+  var darkMqCallback = function() {
     if (appearanceMode === 'auto') {
       applyAppearance();
     }
-  });
+  };
+  try { darkMq.addEventListener('change', darkMqCallback); }
+  catch(e) { darkMq.addListener(darkMqCallback); }
 
   // --- Appearance toggle ---
   document.getElementById('appearance-select').addEventListener('change', function(e) {

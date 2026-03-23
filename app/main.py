@@ -161,14 +161,15 @@ async def get_tile(style: str, z: int, x: int, y: int):
             headers={"Cache-Control": "public, max-age=300"}
         )
 
-    # Save to cache
+    # Save to cache (encodes PNG and populates memory cache)
     await loop.run_in_executor(_io_pool, save_tile, img, style, z, x, y)
     logger.info(f"On-the-fly render complete: {style}/{z}/{x}/{y} ({len(segments)} segments)")
 
-    # Convert to bytes
-    buf = io.BytesIO()
-    img.save(buf, "PNG")
-    tile_bytes = buf.getvalue()
+    # Retrieve bytes from memory cache (just populated by save_tile)
+    # instead of re-encoding the image to PNG a second time
+    tile_bytes = await loop.run_in_executor(
+        _io_pool, load_cached_tile, style, z, x, y
+    )
 
     return Response(
         content=tile_bytes,

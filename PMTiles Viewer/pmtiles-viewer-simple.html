@@ -179,7 +179,8 @@
     document.documentElement.classList.add('dark');
   }
 
-  darkMq.addEventListener('change', applyAppearance);
+  try { darkMq.addEventListener('change', applyAppearance); }
+  catch(e) { darkMq.addListener(applyAppearance); }
 
   // ---- Register PMTiles protocol ----
   var protocol = new pmtiles.Protocol();

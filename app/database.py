@@ -124,6 +124,16 @@ def init_db():
             "ON files(content_hash)"
         )
 
+        # Composite index for the per-file range query in
+        # get_track_segments_in_tile() — covers (file_id, id) lookups
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_trackpoints_file_id "
+            "ON trackpoints(file_id, id)"
+        )
+
+        # Update query planner statistics
+        conn.execute("ANALYZE")
+
 
 def file_hash(filepath: str) -> str:
     """Compute SHA256 hash of a file."""
@@ -380,16 +390,10 @@ def _delete_cached_tiles(tiles: set[tuple[int, int, int]]):
 
     # Evict from renderer's in-memory cache (lazy import to avoid circular dep)
     try:
-        from app.renderer import _tile_mem_cache, _tile_cache_order
+        from app.renderer import _cache_remove
         for style in styles:
             for z, x, y in tiles:
-                key = (style, z, x, y)
-                if key in _tile_mem_cache:
-                    _tile_mem_cache.pop(key, None)
-                    try:
-                        _tile_cache_order.remove(key)
-                    except ValueError:
-                        pass
+                _cache_remove((style, z, x, y))
     except ImportError:
         pass
 

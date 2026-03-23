@@ -1,6 +1,7 @@
 """Background worker that pre-renders dirty tiles."""
 
 import asyncio
+import gc
 import os
 import time
 import logging
@@ -27,6 +28,10 @@ IDLE_PAUSE = float(os.environ.get("PRERENDER_IDLE_PAUSE", "5.0"))
 
 # Number of parallel render workers (defaults to CPU count, min 1)
 RENDER_WORKERS = int(os.environ.get("PRERENDER_WORKERS", "0")) or (os.cpu_count() or 2)
+
+# Tiles at or below this zoom level are "heavy" and rendered sequentially
+# to avoid OOM when multiple low-zoom tiles load 200K+ points in parallel
+HEAVY_ZOOM_THRESHOLD = int(os.environ.get("PRERENDER_HEAVY_ZOOM", "8"))
 
 # Track rendering state for the status API
 _status = {
@@ -69,6 +74,12 @@ def _render_one_tile(z: int, x: int, y: int) -> bool:
             produced = True
 
     clear_dirty_tile(z, x, y)
+
+    # Force garbage collection after heavy tiles to reclaim large
+    # NumPy/Pillow temporaries before the next heavy tile starts
+    if z <= HEAVY_ZOOM_THRESHOLD:
+        gc.collect()
+
     return produced
 
 
@@ -119,12 +130,19 @@ async def prerender_worker():
 
             _status["state"] = "rendering"
 
-            # Submit entire batch to the thread pool in parallel.
-            # Per-tile data caps (MAX_POINTS_PER_TILE, MAX_SEGMENTS_PER_TILE)
-            # keep individual tile memory bounded.
+            # Partition batch by zoom weight to prevent OOM.
+            # Heavy tiles (low zoom) load huge amounts of data;
+            # rendering several in parallel can exceed memory limits.
+            heavy = [(z, x, y) for z, x, y in dirty
+                     if z <= HEAVY_ZOOM_THRESHOLD]
+            light = [(z, x, y) for z, x, y in dirty
+                     if z > HEAVY_ZOOM_THRESHOLD]
+
             rendered_in_batch = 0
+
+            # Light tiles: submit all in parallel (all workers)
             futures = []
-            for z, x, y in dirty:
+            for z, x, y in light:
                 fut = loop.run_in_executor(
                     pool, _render_one_tile, z, x, y
                 )
@@ -139,8 +157,22 @@ async def prerender_worker():
                         _status["rendered_session"] += 1
                         _status["last_render_time"] = time.time()
                 except Exception as e:
-                    # Don't clear the dirty flag — leave it so the tile
-                    # gets retried in a future batch.
+                    logger.warning(
+                        f"Pre-render failed for {z}/{x}/{y}: {e}"
+                    )
+
+            # Heavy tiles: one at a time to bound memory
+            for z, x, y in heavy:
+                try:
+                    produced = await loop.run_in_executor(
+                        pool, _render_one_tile, z, x, y
+                    )
+                    if produced:
+                        rendered_in_batch += 1
+                        _status["rendered_total"] += 1
+                        _status["rendered_session"] += 1
+                        _status["last_render_time"] = time.time()
+                except Exception as e:
                     logger.warning(
                         f"Pre-render failed for {z}/{x}/{y}: {e}"
                     )
@@ -149,10 +181,17 @@ async def prerender_worker():
             _status["remaining"] = remaining
 
             if rendered_in_batch > 0:
+                # Show zoom level range in log for progress visibility
+                batch_zooms = sorted(set(z for z, x, y in dirty))
+                if len(batch_zooms) == 1:
+                    zoom_info = f"z{batch_zooms[0]}"
+                else:
+                    zoom_info = f"z{batch_zooms[0]}-z{batch_zooms[-1]}"
                 logger.info(
                     f"Pre-rendered {rendered_in_batch} tiles "
                     f"\u00d7 {NUM_STYLES} styles "
                     f"({rendered_in_batch * NUM_STYLES} images) "
+                    f"at {zoom_info} "
                     f"\u2014 {remaining} tiles remaining "
                     f"({remaining * NUM_STYLES} images)"
                 )

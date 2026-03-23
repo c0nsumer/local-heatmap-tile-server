@@ -509,11 +509,14 @@
   });
 
   // --- Listen for OS color scheme changes ---
-  darkMq.addEventListener('change', function() {
+  // Use try/catch for Firefox compatibility (older versions only support addListener)
+  var darkMqCallback = function() {
     if (appearanceMode === 'auto') {
       applyAppearance();
     }
-  });
+  };
+  try { darkMq.addEventListener('change', darkMqCallback); }
+  catch(e) { darkMq.addListener(darkMqCallback); }
 
   // --- Appearance toggle ---
   document.getElementById('appearance-select').addEventListener('change', function(e) {

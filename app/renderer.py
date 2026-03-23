@@ -1,6 +1,8 @@
 """Render heatmap tiles from GPS trackpoints using Pillow and NumPy."""
 
 import math
+import threading
+from collections import OrderedDict
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from pathlib import Path
@@ -134,13 +136,22 @@ def render_tile(segments: list[list[tuple[float, float]]],
     if not segments:
         return None
 
-    # Cap segments to avoid unbounded memory on low-zoom tiles
-    if len(segments) > MAX_SEGMENTS_PER_TILE:
+    # Cap segments to avoid unbounded memory on low-zoom tiles.
+    # At low zoom, a 256px tile can't visually distinguish thousands of
+    # overlapping 1px lines, so a lower cap saves memory with no visual cost.
+    if z <= 4:
+        effective_cap = min(MAX_SEGMENTS_PER_TILE, 500)
+    elif z <= 8:
+        effective_cap = min(MAX_SEGMENTS_PER_TILE, 2000)
+    else:
+        effective_cap = MAX_SEGMENTS_PER_TILE
+
+    if len(segments) > effective_cap:
         logger.warning(
             f"Tile {style}/{z}/{x}/{y}: capping {len(segments)} segments "
-            f"to {MAX_SEGMENTS_PER_TILE}"
+            f"to {effective_cap}"
         )
-        segments = segments[:MAX_SEGMENTS_PER_TILE]
+        segments = segments[:effective_cap]
 
     # Determine line width based on zoom level
     base_width = LINE_WIDTH
@@ -165,8 +176,8 @@ def render_tile(segments: list[list[tuple[float, float]]],
     # points are well under 1km apart.
     MAX_GAP_KM = 1.0
 
-    # Draw all tracks onto a single grayscale image, then accumulate.
-    # Each track gets its own image so overlapping tracks add intensity.
+    # Each track gets its own temporary grayscale image so overlapping
+    # tracks accumulate intensity (each track contributes at most 1.0).
     buf = np.zeros((TILE_SIZE, TILE_SIZE), dtype=np.float32)
 
     for track in segments:
@@ -204,7 +215,7 @@ def render_tile(segments: list[list[tuple[float, float]]],
         if not np.any(valid):
             continue
 
-        # Draw valid segments onto a single temp image for this track
+        # Draw valid segments onto a temp image for this track
         tmp = Image.new("L", (TILE_SIZE, TILE_SIZE), 0)
         draw = ImageDraw.Draw(tmp)
 
@@ -275,21 +286,28 @@ def save_tile(img: Image.Image, style: str, z: int, x: int, y: int):
 
 
 # In-memory LRU cache for tile bytes — avoids disk reads for hot tiles.
+# Thread-safe via lock; O(1) operations via OrderedDict.
 # Sized to hold ~2000 tiles (~10-20MB depending on tile complexity).
 _TILE_CACHE_MAX = int(os.environ.get("TILE_MEM_CACHE_SIZE", "2000"))
-_tile_mem_cache: dict[tuple, bytes] = {}
-_tile_cache_order: list[tuple] = []
+_tile_mem_cache: OrderedDict[tuple, bytes] = OrderedDict()
+_tile_cache_lock = threading.Lock()
 
 
 def _cache_put(key: tuple, data: bytes):
     """Add a tile to the memory cache, evicting oldest if full."""
-    if key in _tile_mem_cache:
-        _tile_cache_order.remove(key)
-    elif len(_tile_mem_cache) >= _TILE_CACHE_MAX:
-        oldest = _tile_cache_order.pop(0)
-        _tile_mem_cache.pop(oldest, None)
-    _tile_mem_cache[key] = data
-    _tile_cache_order.append(key)
+    with _tile_cache_lock:
+        if key in _tile_mem_cache:
+            _tile_mem_cache.move_to_end(key)
+        else:
+            if len(_tile_mem_cache) >= _TILE_CACHE_MAX:
+                _tile_mem_cache.popitem(last=False)
+        _tile_mem_cache[key] = data
+
+
+def _cache_remove(key: tuple):
+    """Remove a tile from the memory cache if present."""
+    with _tile_cache_lock:
+        _tile_mem_cache.pop(key, None)
 
 
 def load_cached_tile(style: str, z: int, x: int, y: int) -> bytes | None:
@@ -297,9 +315,11 @@ def load_cached_tile(style: str, z: int, x: int, y: int) -> bytes | None:
     key = (style, z, x, y)
 
     # Check memory cache
-    data = _tile_mem_cache.get(key)
-    if data is not None:
-        return data
+    with _tile_cache_lock:
+        data = _tile_mem_cache.get(key)
+        if data is not None:
+            _tile_mem_cache.move_to_end(key)
+            return data
 
     # Fall back to disk
     path = get_tile_path(style, z, x, y)
@@ -314,15 +334,13 @@ def clear_tile_cache(style: str | None = None):
     """Clear tile cache (disk and memory) for a style or all."""
     import shutil
     # Clear memory cache
-    if style:
-        keys_to_remove = [k for k in _tile_mem_cache if k[0] == style]
-        for k in keys_to_remove:
-            _tile_mem_cache.pop(k, None)
-            if k in _tile_cache_order:
-                _tile_cache_order.remove(k)
-    else:
-        _tile_mem_cache.clear()
-        _tile_cache_order.clear()
+    with _tile_cache_lock:
+        if style:
+            keys_to_remove = [k for k in _tile_mem_cache if k[0] == style]
+            for k in keys_to_remove:
+                del _tile_mem_cache[k]
+        else:
+            _tile_mem_cache.clear()
     if style:
         p = TILES_DIR / style
         if p.exists():

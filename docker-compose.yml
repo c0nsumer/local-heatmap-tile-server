@@ -19,6 +19,7 @@ services:
       - PRERENDER_IDLE_PAUSE=5.0
       - PRERENDER_WORKERS=6
       - MAX_SEGMENTS_PER_TILE=10000
+      - PRERENDER_HEAVY_ZOOM=8
     deploy:
       resources:
         limits:
