@@ -363,6 +363,10 @@
       <span class="stat-label">Last render</span>
       <span class="stat-value" id="pr-last">--</span>
     </div>
+    <div class="stat-row" id="pr-eta-row" style="display:none">
+      <span class="stat-label">Estimated time</span>
+      <span class="stat-value" id="pr-eta">--</span>
+    </div>
     <div class="progress-bar" id="pr-progress-wrap" style="display:none">
       <div class="progress-fill" id="pr-progress" style="width: 0%"></div>
     </div>
@@ -408,6 +412,7 @@
   const ACCEPTED_EXTENSIONS = ['.fit', '.gpx', '.tcx'];
 
   let sessionStart = null;
+  let sessionStartTime = null;
   let pendingFiles = [];
 
   function formatNumber(n) {
@@ -424,6 +429,18 @@
   function formatCoord(lat, lon) {
     if (lat == null || lon == null) return '--';
     return lat.toFixed(4) + ', ' + lon.toFixed(4);
+  }
+
+  function formatDuration(secs) {
+    if (secs < 60) return Math.ceil(secs) + 's';
+    if (secs < 3600) {
+      var m = Math.floor(secs / 60);
+      var s = Math.ceil(secs % 60);
+      return m + 'm ' + s + 's';
+    }
+    var h = Math.floor(secs / 3600);
+    var m = Math.floor((secs % 3600) / 60);
+    return h + 'h ' + m + 'm';
   }
 
   function timeAgo(ts) {
@@ -565,16 +582,35 @@
       document.getElementById('pr-last').textContent = timeAgo(d.last_render_time);
 
       const progressWrap = document.getElementById('pr-progress-wrap');
+      const etaRow = document.getElementById('pr-eta-row');
+      const etaEl = document.getElementById('pr-eta');
       if (d.state === 'rendering' && d.remaining > 0) {
-        if (sessionStart === null) sessionStart = d.rendered_session + d.remaining;
+        if (sessionStart === null) {
+          sessionStart = d.rendered_session + d.remaining;
+          sessionStartTime = Date.now();
+        }
         const done = d.rendered_session;
         const total = sessionStart;
         const pct = total > 0 ? Math.min(100, (done / total) * 100) : 0;
         document.getElementById('pr-progress').style.width = pct.toFixed(1) + '%';
         progressWrap.style.display = '';
+
+        // ETA calculation based on observed rate
+        const elapsed = (Date.now() - sessionStartTime) / 1000;
+        if (done > 0 && elapsed > 2) {
+          const rate = done / elapsed;
+          const secsLeft = d.remaining / rate;
+          etaEl.textContent = formatDuration(secsLeft);
+          etaRow.style.display = '';
+        } else {
+          etaEl.textContent = 'calculating\u2026';
+          etaRow.style.display = '';
+        }
       } else {
         sessionStart = null;
+        sessionStartTime = null;
         progressWrap.style.display = 'none';
+        etaRow.style.display = 'none';
       }
 
       document.getElementById('btn-pause').disabled = !d.enabled;
