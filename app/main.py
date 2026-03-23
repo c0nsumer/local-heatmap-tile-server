@@ -144,6 +144,15 @@ async def get_tile(style: str, z: int, x: int, y: int):
     )
 
     if not segments:
+        # Save empty tile to disk so nginx serves it directly next time,
+        # avoiding repeated on-the-fly renders for tiles with no data.
+        # These get deleted automatically if new data is imported in the area.
+        tile_dir = Path(f"/data/tiles/{style}/{z}/{x}")
+        tile_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            (tile_dir / f"{y}.png").write_bytes(EMPTY_TILE)
+        except Exception:
+            pass
         return Response(
             content=EMPTY_TILE,
             media_type="image/png",
