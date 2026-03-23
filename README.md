@@ -4,7 +4,7 @@ A self-hosted, Docker-based system that imports GPS activity files and generates
 
 ## Note about AI Development
 
-Almost the entirity of this project (but not this paragraph) was built using [Claude](https://claude.ai) to both quickly scratch an itch (this tile server is very useful for me when making maps and in moving away from SaaS fitness trackers) and to become more comfortable and familiar with AI-assisted development, with a significant amount of manual bug testing and iterating through features.
+Almost the entirity of this project (but not this paragraph) was built using [Claude](https://claude.ai) to both quickly scratch an itch and to become more comfortable and familiar with AI-assisted development, with a significant amount of manual bug testing and iterating through features. This tile server is something I've wanted for a while
 
 ## Tile Server Features
 
@@ -20,7 +20,7 @@ Almost the entirity of this project (but not this paragraph) was built using [Cl
 ## Live Heatmap Viewer Features
 
 - **MapLibre GL JS viewer**: Built-in WebGL map with automatic light/dark mode, smooth fractional zoom, basemap selection, and bookmarkable URLs.
-- **JOSM compatible**: One-click "Open in JOSM" link with style selection.
+- **Editor integration**: *Use in Editor* menu to open the heatmap as a background layer in [JOSM](https:josm.openstreetmap.de) or [iD](https://www.openstreetmap.org/edit?editor=id), or copy the TMS URL.
 - **GPX overlay**: Drag-and-drop GPX files onto the map viewer to compare routes against the heatmap. (See [GPX Overlay](#gpx-overlay).)
 - **Data Manager**: Live pre-render progress, file upload, and import/rebuild/export controls.
 
@@ -87,16 +87,22 @@ The Top 10% layer only shows pixels where track overlap intensity exceeds the 90
 
 Tiles are rendered at zoom levels 2–18. The viewer smoothly upscales z18 tiles for zoom levels 19–20.
 
-## JOSM Imagery Layer
+## Using Tiles in Editors
 
-Click the "Open in JOSM" link in the viewer to add the heatmap as an imagery layer (uses whichever style is currently selected). Or add it manually:
+The viewer's "Use in Editor" menu can open the heatmap as a background imagery layer in either JOSM or iD (the currently selected style is used).
 
-**Warm Example**
+### JOSM
+
+Requires JOSM to be running with remote control enabled (enabled by default). The viewer sends the imagery URL to JOSM automatically. To add manually:
 
 - Imagery → Custom Imagery
 - URL: `tms:http://localhost:8000/tiles/warm/{z}/{x}/{y}.png`
 - Name: `Local Heatmap`
 - Min zoom: 2, Max zoom: 18
+
+### iD
+
+Opens the OpenStreetMap iD editor in a new tab with the heatmap as a custom background layer. The tile server includes CORS headers so iD can load tiles from `localhost`.
 
 ## API Endpoints
 

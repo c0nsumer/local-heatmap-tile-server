@@ -263,8 +263,33 @@
     text-decoration: none;
     font-size: 11px;
     transition: color 0.15s;
+    cursor: pointer;
   }
   .bar-link:hover { color: var(--bar-link-hover); }
+  .editor-popup {
+    display: none;
+    position: absolute;
+    bottom: 28px;
+    background: var(--panel-bg);
+    border: 1px solid var(--ctrl-border);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+    padding: 4px 0;
+    z-index: 10;
+    min-width: 120px;
+  }
+  .editor-popup.open { display: block; }
+  .editor-popup a {
+    display: block;
+    padding: 5px 14px;
+    color: var(--bar-text);
+    text-decoration: none;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .editor-popup a:hover {
+    background: var(--divider);
+  }
   .bar-sep {
     width: 1px;
     height: 14px;
@@ -366,7 +391,14 @@
     <span class="stat-value" id="stat-zoom">&mdash;</span>
   </div>
   <div class="bar-sep"></div>
-  <a href="#" class="bar-link" id="josm-link">Open in JOSM</a>
+  <span style="position:relative">
+    <a class="bar-link" id="editor-toggle">Use in Editor &#9650;</a>
+    <div class="editor-popup" id="editor-popup">
+      <a href="#" id="josm-link">JOSM</a>
+      <a href="#" id="id-link">iD (openstreetmap.org)</a>
+      <a href="#" id="copy-tms-link">Copy TMS URL&hellip;</a>
+    </div>
+  </span>
   <div class="bar-sep"></div>
   <a href="/manager" class="bar-link">Data Manager</a>
 </div>
@@ -590,15 +622,54 @@
     })
     .catch(function() {});
 
-  // --- JOSM remote control ---
+  // --- Editor popup ---
+  var editorPopup = document.getElementById('editor-popup');
+  document.getElementById('editor-toggle').addEventListener('click', function(e) {
+    e.preventDefault();
+    editorPopup.classList.toggle('open');
+  });
+  // Close popup when clicking elsewhere
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#editor-toggle') && !e.target.closest('#editor-popup')) {
+      editorPopup.classList.remove('open');
+    }
+  });
+
+  // JOSM remote control
   document.getElementById('josm-link').addEventListener('click', function(e) {
     e.preventDefault();
+    e.stopPropagation();
+    editorPopup.classList.remove('open');
     var tmsUrl = window.location.origin + '/tiles/' + currentStyle + '/{zoom}/{x}/{y}.png';
     var josmUrl = 'http://127.0.0.1:8111/imagery?title=' + encodeURIComponent('Local Heatmap (' + currentStyle + ')')
       + '&type=tms&min_zoom=2&max_zoom=18'
       + '&url=' + encodeURIComponent(tmsUrl);
     fetch(josmUrl, { mode: 'no-cors' }).catch(function() {
       alert('Could not connect to JOSM. Make sure JOSM is running with remote control enabled.');
+    });
+  });
+
+  // iD editor
+  document.getElementById('id-link').addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    editorPopup.classList.remove('open');
+    var tileUrl = window.location.origin + '/tiles/' + currentStyle + '/{zoom}/{x}/{y}.png';
+    var idUrl = 'https://www.openstreetmap.org/edit?editor=id#background=custom:' + encodeURIComponent(tileUrl);
+    window.open(idUrl, '_blank');
+  });
+
+  // Copy TMS URL
+  document.getElementById('copy-tms-link').addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    editorPopup.classList.remove('open');
+    var tmsUrl = window.location.origin + '/tiles/' + currentStyle + '/{z}/{x}/{y}.png';
+    navigator.clipboard.writeText(tmsUrl).then(function() {
+      var link = document.getElementById('copy-tms-link');
+      var orig = link.textContent;
+      link.textContent = 'Copied!';
+      setTimeout(function() { link.textContent = orig; }, 1500);
     });
   });
 
