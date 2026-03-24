@@ -35,7 +35,7 @@ A demo of the [PMTiles Viewer](tools/pmtiles-viewer/README.md) showing a series 
 - [Full Viewer](https://trailmaps.app/pmtiles-viewer-demo/pmtiles-viewer.html)
 - [Simple Viewer](https://trailmaps.app/pmtiles-viewer-demo/pmtiles-viewer-simple.html)
 
-Files for this demo can be browsed at: https://trailmaps.app/pmtiles-viewer/demo/
+Files for this demo can be browsed at: https://trailmaps.app/pmtiles-viewer-demo/
 
 ## Screenshots
 
