@@ -198,6 +198,12 @@ When a tile's segment count exceeds the limit, it is silently capped. At low zoo
 
 A full rebuild with ~300,000 GPS points and ~3,000 tracks across zoom levels 2–18 produces approximately 60,000 tile coordinates (180,000 images across 3 styles). Expect this to take **4–6 hours** depending on hardware, with the first 10–15 minutes spent on the slow low-zoom tiles.
 
+### Empty Tiles
+
+When the viewer displays an area with no GPS data, those tiles are rendered on-the-fly as transparent PNGs and saved to disk. On subsequent requests, nginx serves them directly. You may see on-the-fly render messages in the logs when browsing to new areas — this is normal and not a concern. Each empty tile is only rendered once; after a few browsing sessions, the commonly viewed areas are fully cached and the on-the-fly renders effectively stop.
+
+Empty tiles are not pre-rendered because it would mean writing files for every possible tile coordinate across zoom levels 2–18, the vast majority of which will never be viewed.
+
 ## PMTiles Export
 
 Export heatmap tiles as a single [PMTiles](https://github.com/protomaps/PMTiles) file for static hosting or sharing.
